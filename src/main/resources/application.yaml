@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: crypto
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  h2:
+    console:
+      enabled: true
+
+exchange:
+  binance:
+    api-key: 1qZkNEj9PqNMAOHgCJhtcjGEiMxDuNugk0bKejWiNSEWN0EC1UrwpvSQRFEh0WLA
+    secret-key: bMLBS2yjv1oS5O7NcysobMEEZF6sNFiJu8TSFt9Y3K4sebtxp0rUCD0OBDs5iEBb
+    testnet: true
+    base-url-api: https://testnet.binance.vision/api
+    websoceket-url: wss://stream.binance.vision
+    testnet-web: https://testnet.binance.vision
+
+trading:
+  enabled: false
+  default-symbol: BTC/USDT
+
+logging:
+  level:
+    org.knowm.xchange: DEBUG
+    com.tradingbot: DEBUG
