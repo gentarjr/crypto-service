@@ -11,9 +11,9 @@ spring:
 
 exchange:
   binance:
-    api-key: 1qZkNEj9PqNMAOHgCJhtcjGEiMxDuNugk0bKejWiNSEWN0EC1UrwpvSQRFEh0WLA
-    secret-key: bMLBS2yjv1oS5O7NcysobMEEZF6sNFiJu8TSFt9Y3K4sebtxp0rUCD0OBDs5iEBb
-    testnet: true
+    api-key: ${BINANCE_API_KEY}
+    secret-key: ${BINANCE_SECRET_KEY}
+    testnet: ${BINANCE_TESTNET:true}
     base-url-api: https://testnet.binance.vision/api
     websoceket-url: wss://stream.binance.vision
     testnet-web: https://testnet.binance.vision
@@ -21,6 +21,16 @@ exchange:
 trading:
   enabled: false
   default-symbol: BTC/USDT
+  base-currency: BTC
+  quote-currency: USDT
+  position-size: 0.1
+  health-check:
+    cache-duration-seconds: 30
+    min-quote-balance: 10
+    max-clock-skew-ms: 1000
+
+balance:
+  symbol: BTC|BNB|USDT|SOL|ETH
 
 logging:
   level:
