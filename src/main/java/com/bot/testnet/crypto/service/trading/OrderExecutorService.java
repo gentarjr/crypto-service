@@ -24,6 +24,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -297,10 +298,20 @@ public class OrderExecutorService {
             }
 
         } catch (Exception e) {
-            log.error("❌ [LIVE] Error executing BUY: {}", e.getMessage());
+            log.error("❌ BUY error: {}", e.getMessage());
             telegramService.sendMessage(
-                    "❌ [LIVE] Execution Error",
-                    "Error: " + e.getMessage());
+                    "❌ BUY Order GAGAL",
+                    String.format(
+                            "Gagal eksekusi BUY order!\n\n" +
+                                    "Signal: %s\n" +
+                                    "Price: $%s\n" +
+                                    "Error: %s\n\n" +
+                                    "⚠️ Cek Binance manual!\n" +
+                                    "⏰ %s WIB",
+                            signal.getStrategy(),
+                            currentPrice,
+                            e.getMessage(),
+                            formatTime()));
         }
     }
 
@@ -390,23 +401,25 @@ public class OrderExecutorService {
                 openPosition = null;
 
             } catch (Exception e) {
-                log.error("❌ [LIVE] Error closing position: {}", e.getMessage());
+                log.error("❌ SELL error: {}", e.getMessage());
 
-                // CRITICAL: Kirim alert untuk manual intervention
+                // CRITICAL — posisi masih terbuka!
                 telegramService.sendMessage(
-                        "🚨 [LIVE] CRITICAL — MANUAL ACTION NEEDED!",
+                        "🚨 CRITICAL — SELL GAGAL!",
                         String.format(
-                                "Failed to close position #%s!\n" +
+                                "⚠️ POSISI MASIH TERBUKA!\n\n" +
+                                        "ID: #%s\n" +
+                                        "Pair: BNB/USDT\n" +
+                                        "Qty: %s BNB\n" +
+                                        "Entry: $%s\n" +
                                         "Error: %s\n\n" +
-                                        "⚠️ Please close manually on Binance!\n" +
-                                        "   Pair: %s/%s\n" +
-                                        "   Qty: %s\n" +
-                                        "   Current reason: %s",
+                                        "🔴 SEGERA TUTUP MANUAL DI BINANCE!\n" +
+                                        "⏰ %s WIB",
                                 openPosition.getId(),
-                                e.getMessage(),
-                                baseCurrency, quoteCurrency,
                                 openPosition.getQuantity(),
-                                reason));
+                                openPosition.getEntryPrice(),
+                                e.getMessage(),
+                                formatTime()));
             }
         } finally {
             positionLock.unlock();
@@ -551,7 +564,7 @@ public class OrderExecutorService {
     }
 
     private String formatTime() {
-        return java.time.LocalDateTime.now()
+        return java.time.LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
                 .format(java.time.format.DateTimeFormatter
                         .ofPattern("dd-MM-yyyy HH:mm:ss"));
     }

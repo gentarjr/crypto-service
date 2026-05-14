@@ -1,14 +1,12 @@
 package com.bot.testnet.crypto.service.scheduler;
 
-import com.bot.testnet.crypto.model.dto.Candle;
-import com.bot.testnet.crypto.model.dto.CandleUpdateResult;
-import com.bot.testnet.crypto.model.dto.Signal;
-import com.bot.testnet.crypto.model.dto.SignalAction;
+import com.bot.testnet.crypto.model.dto.*;
 import com.bot.testnet.crypto.model.request.GetCandleRequest;
 import com.bot.testnet.crypto.model.response.GetCandleResponse;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
 import com.bot.testnet.crypto.service.exchange.AdaptiveSignalService;
+import com.bot.testnet.crypto.service.exchange.BalanceService;
 import com.bot.testnet.crypto.service.exchange.CandleCache;
 import com.bot.testnet.crypto.service.exchange.CandleService;
 import com.bot.testnet.crypto.service.indicator.IndicatorService;
@@ -20,12 +18,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.knowm.xchange.binance.dto.marketdata.KlineInterval;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
 import java.math.BigDecimal;
+import java.time.ZoneId;
 
 @Component
 @RequiredArgsConstructor
@@ -40,8 +41,11 @@ public class CandleScheduler {
     private final PaperTradingService paperTradingService;
     private final TradingHoursService tradingHoursService;
     private final OrderExecutorService orderExecutorService;
+    private final BalanceService balanceService;
 
     private String lastRegime = StringUtils.EMPTY;
+    private int candleFetchErrorCount = 0;
+    private static final int MAX_ERROR_BEFORE_ALERT = 3;
 
     @Value("${trading.pair.base}")
     private String baseCurrency;
@@ -54,6 +58,24 @@ public class CandleScheduler {
 
     @Value("${trading.market-data.cache-size}")
     private int cacheSize;
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        log.info("🚀 Bot fully started!");
+        telegramService.sendMessage(
+                "🤖 Bot Started",
+                String.format(
+                        "✅ Crypto Bot ONLINE\n\n" +
+                                "📋 Config:\n" +
+                                "   Pair: <b>BNB/USDT</b>\n" +
+                                "   Timeframe: <b>m15</b>\n" +
+                                "   Live Trading: <b>%s</b>\n" +
+                                "   Paper Trading: <b>Active</b>\n\n" +
+                                "💰 Balance akan di-fetch saat signal pertama\n\n" +
+                                "⏰ %s WIB",
+                        orderExecutorService.isEnabled() ? "ENABLED ✅" : "DISABLED ❌",
+                        formatTime()));
+    }
 
     /**
      * Initialize cache saat aplikasi startup
@@ -116,10 +138,63 @@ public class CandleScheduler {
             if (hasNewClosedCandle) {
                 onNewClosedCandle();
             }
-
+            candleFetchErrorCount = 0;
             log.debug("⏰ Cache size: {} candles", candleCache.size());
         } catch (Exception e) {
             log.error("❌ Failed to fetch latest candle", e);
+            candleFetchErrorCount++;
+            log.error("❌ Failed to fetch candle: {}", e.getMessage());
+
+            // Kirim alert kalau error 3x berturut-turut
+            if (candleFetchErrorCount >= MAX_ERROR_BEFORE_ALERT) {
+                telegramService.sendMessage(
+                        "⚠️ Candle Fetch Error",
+                        String.format(
+                                "Gagal fetch candle %d kali berturut-turut!\n\n" +
+                                        "Error: %s\n\n" +
+                                        "Bot masih running tapi data mungkin stale.\n" +
+                                        "⏰ %s WIB",
+                                candleFetchErrorCount,
+                                e.getMessage(),
+                                formatTime()));
+                candleFetchErrorCount = 0; // reset setelah alert
+            }
+        }
+    }
+
+    @Scheduled(cron = "0 0 1 * * *")
+    public void sendMorningHealthCheck() {
+        try {
+            BigDecimal balance = balanceService.getAvailableCapital();
+            DailyStats stats = paperTradingService.getTodayStats();
+            boolean liveHalted = orderExecutorService.isHalted();
+            boolean paperHalted = paperTradingService.isHalted();
+
+            String status = (liveHalted || paperHalted) ? "⚠️ HALTED" : "✅ Running";
+
+            telegramService.sendMessage(
+                    "☀️ Morning Health Check",
+                    String.format(
+                            "Status: <b>%s</b>\n\n" +
+                                    "💰 Balance: <b>$%.2f USDT</b>\n" +
+                                    "📊 Paper Capital: <b>$%.2f</b>\n\n" +
+                                    "Yesterday:\n" +
+                                    "   Trades: %d\n" +
+                                    "   P&L: $%.4f\n\n" +
+                                    "Bot siap trading hari ini!\n" +
+                                    "⏰ %s WIB",
+                            status,
+                            balance.doubleValue(),
+                            paperTradingService.getCurrentCapital().doubleValue(),
+                            stats.getTotalTrades(),
+                            stats.getTotalPnl().doubleValue(),
+                            formatTime()));
+
+        } catch (Exception e) {
+            telegramService.sendMessage(
+                    "❌ Health Check Error",
+                    "Gagal kirim morning report!\n" +
+                            "Error: " + e.getMessage());
         }
     }
 
@@ -128,62 +203,77 @@ public class CandleScheduler {
      * Nanti di sini kita panggil indikator & signal generator
      */
     private void onNewClosedCandle() {
-        Candle latestClosed = candleCache.getLastClosedCandle();
-        log.info("🎯 NEW CLOSED CANDLE detected!");
-        log.info("   Time: {}", latestClosed.getCloseTime());
-        log.info("   OHLC: O={} H={} L={} C={}",
-                latestClosed.getOpen(),
-                latestClosed.getHigh(),
-                latestClosed.getLow(),
-                latestClosed.getClose());
-        log.info("   Volume: {}", latestClosed.getVolume());
-        log.info("   Type: {}", latestClosed.isBullish() ? "🟢 BULLISH" : "🔴 BEARISH");
+        try {
+            Candle latestClosed = candleCache.getLastClosedCandle();
+            log.info("🎯 NEW CLOSED CANDLE detected!");
+            log.info("   Time: {}", latestClosed.getCloseTime());
+            log.info("   OHLC: O={} H={} L={} C={}",
+                    latestClosed.getOpen(),
+                    latestClosed.getHigh(),
+                    latestClosed.getLow(),
+                    latestClosed.getClose());
+            log.info("   Volume: {}", latestClosed.getVolume());
+            log.info("   Type: {}", latestClosed.isBullish() ? "🟢 BULLISH" : "🔴 BEARISH");
 
-        // ✨ NEW: Hitung indikator setelah candle baru tutup
-        log.info("🧮 Calculating indicators...");
-        GetIndicatorResponse snapshot = indicatorService.calculate();
+            // ✨ NEW: Hitung indikator setelah candle baru tutup
+            log.info("🧮 Calculating indicators...");
+            GetIndicatorResponse snapshot = indicatorService.calculate();
 
-        if (snapshot == null) {
-            log.warn("⚠️ Cannot calculate indicators (insufficient data)");
-            return;
+            if (snapshot == null) {
+                log.warn("⚠️ Insufficient data for indicators");
+                telegramService.sendMessage(
+                        "⚠️ Indicator Error",
+                        "Tidak bisa hitung indikator!\n" +
+                                "Kemungkinan data candle tidak cukup.\n" +
+                                "⏰ " + formatTime() + " WIB");
+                return;
+            }
+
+            paperTradingService.updateSnapshot(snapshot);
+            orderExecutorService.updateSnapshot(snapshot);
+
+            log.info("📋 Regime: {} → Strategy: {}",
+                    snapshot.getMarketRegime(),
+                    snapshot.getPreferredStrategy());
+
+            if (!tradingHoursService.isWithinTradingHours()) {
+                log.info("🕐 Outside trading hours — skip signal evaluation");
+                return;
+            }
+
+            // Step 2: Evaluate signal (delegate ke AdaptiveSignalService)
+            Signal signal = adaptiveSignalService.evaluate(snapshot);
+            // Step 3: Log signal
+            logSignal(signal);
+            // Step 4: Send notif hanya kalau signal BARU & actionable
+            boolean isNew = adaptiveSignalService.isNewActionableSignal(signal);
+            if (isNew) {
+                sendSignalNotification(signal);
+            } else {
+                sendHoldNotificationIfRegimeChanged(signal, snapshot);
+            }
+
+            BigDecimal currentPrice = snapshot.getCurrentPrice();
+            paperTradingService.onNewCandle(signal, currentPrice);
+
+            if (orderExecutorService.isEnabled()) {
+                orderExecutorService.onNewCandle(signal, currentPrice, snapshot);
+            }
+            // Step 6: Log position status
+            logPositionStatus(currentPrice, snapshot);
+
+            log.info("════════════════════════════════════════");
+        }catch (Exception e){
+            log.error("❌ Error in onNewClosedCandle: {}", e.getMessage());
+            telegramService.sendMessage(
+                    "❌ Bot Error",
+                    String.format(
+                            "Error saat proses candle!\n\n" +
+                                    "Error: %s\n\n" +
+                                    "⏰ %s WIB",
+                            e.getMessage(),
+                            formatTime()));
         }
-
-        paperTradingService.updateSnapshot(snapshot);
-        orderExecutorService.updateSnapshot(snapshot);
-
-        log.info("📋 Regime: {} → Strategy: {}",
-                snapshot.getMarketRegime(),
-                snapshot.getPreferredStrategy());
-
-        if (!tradingHoursService.isWithinTradingHours()) {
-            log.info("🕐 Outside trading hours — skip signal evaluation");
-            return;
-        }
-
-        // Step 2: Evaluate signal (delegate ke AdaptiveSignalService)
-        Signal signal = adaptiveSignalService.evaluate(snapshot);
-        // Step 3: Log signal
-        logSignal(signal);
-        // Step 4: Send notif hanya kalau signal BARU & actionable
-        boolean isNew = adaptiveSignalService.isNewActionableSignal(signal);
-        if (isNew) {
-            sendSignalNotification(signal);
-        }else{
-            sendHoldNotificationIfRegimeChanged(signal, snapshot);
-        }
-
-        BigDecimal currentPrice = snapshot.getCurrentPrice();
-        paperTradingService.onNewCandle(signal, currentPrice);
-
-        if (orderExecutorService.isEnabled()) {
-            orderExecutorService.onNewCandle(signal, currentPrice, snapshot);
-        }
-        // Step 6: Log position status
-        logPositionStatus(currentPrice, snapshot);
-
-        log.info("════════════════════════════════════════");
-        // TODO Phase 3: Generate signal di sini
-
     }
 
     private void logPositionStatus(BigDecimal currentPrice, GetIndicatorResponse snapshot) {
@@ -341,5 +431,11 @@ public class CandleScheduler {
                                 .ofPattern("dd-MM-yyyy HH:mm:ss"))));
 
         telegramService.sendMessage("⏸️ HOLD — Regime Changed", msg.toString());
+    }
+
+    private String formatTime() {
+        return java.time.LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
+                .format(java.time.format.DateTimeFormatter
+                        .ofPattern("dd-MM-yyyy HH:mm:ss"));
     }
 }

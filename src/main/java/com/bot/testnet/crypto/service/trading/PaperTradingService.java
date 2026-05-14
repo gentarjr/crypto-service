@@ -17,10 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -456,7 +453,7 @@ public class PaperTradingService {
     }
 
     private String formatTime() {
-        return LocalDateTime.now()
+        return LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
                 .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
     }
 
