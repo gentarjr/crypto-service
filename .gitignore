@@ -31,3 +31,16 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Environment variables (CONTAIN SECRETS!)
+.env
+.env.local
+.env.*.local
+
+# Application config (kalau pakai profile prod)
+application-prod.yml
+application-secret.yml
+
+# Logs
+logs/
+*.log
