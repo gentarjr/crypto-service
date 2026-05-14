@@ -4,8 +4,10 @@ import com.bot.testnet.crypto.model.dto.Signal;
 import com.bot.testnet.crypto.model.dto.SignalAction;
 import com.bot.testnet.crypto.model.dto.StrategyType;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
+import com.bot.testnet.crypto.model.response.GetSignalTradingResponse;
 import com.bot.testnet.crypto.service.exchange.BbSignalService;
 import com.bot.testnet.crypto.service.exchange.EmaSignalService;
+import com.bot.testnet.crypto.service.health.GetSignalTradingService;
 import com.bot.testnet.crypto.service.indicator.IndicatorService;
 import com.bot.testnet.crypto.service.risk.TradingHoursService;
 import com.bot.testnet.crypto.service.trading.PaperTradingService;
@@ -18,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.Map;
 
 @RestController
@@ -32,6 +33,7 @@ public class SignalController {
     private final IndicatorService indicatorService;
     private final TradingHoursService tradingHoursService;
     private final PaperTradingService paperTradingService;
+    private final GetSignalTradingService getSignalTradingService;
 
     @GetMapping("/signal/bb")
     public Signal testBbSignal() {
@@ -127,5 +129,10 @@ public class SignalController {
         } catch (IllegalStateException e) {
             return Map.of("error", e.getMessage());
         }
+    }
+
+    @GetMapping("/signal/why")
+    public GetSignalTradingResponse whyNotBuying() {
+        return getSignalTradingService.execute();
     }
 }

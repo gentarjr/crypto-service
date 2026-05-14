@@ -254,4 +254,73 @@ public class BbSignalService implements SignalService {
     public String getStrategyName() {
         return "BB_MEAN_REVERSION";
     }
+
+    public List<SignalFilter> evaluateAllFilters(GetIndicatorResponse snapshot) {
+        List<SignalFilter> filters = new ArrayList<>();
+
+        // Filter 1: ADX ranging
+        double adx = snapshot.getAdx().doubleValue();
+        boolean f1 = adx < adxRangingThreshold;
+        filters.add(f1
+                ? SignalFilter.pass("ADX_REGIME",
+                String.format("ADX %.2f < %.0f (ranging ✅)", adx, adxRangingThreshold))
+                : SignalFilter.fail("ADX_REGIME",
+                String.format("ADX %.2f ≥ %.0f (not ranging)", adx, adxRangingThreshold)));
+
+        // Filter 2: Price touch lower band
+        boolean f2 = snapshot.isTouchLowerBand();
+        filters.add(f2
+                ? SignalFilter.pass("BB_LOWER_TOUCH",
+                String.format("Price $%.2f ≤ Lower BB $%.2f ✅",
+                        snapshot.getCurrentPrice().doubleValue(),
+                        snapshot.getBbLower().doubleValue()))
+                : SignalFilter.fail("BB_LOWER_TOUCH",
+                String.format("Price $%.2f > Lower BB $%.2f (gap: $%.2f)",
+                        snapshot.getCurrentPrice().doubleValue(),
+                        snapshot.getBbLower().doubleValue(),
+                        snapshot.getCurrentPrice().subtract(snapshot.getBbLower()).doubleValue())));
+
+        // Filter 3: RSI oversold
+        double rsi = snapshot.getRsi().doubleValue();
+        boolean f3 = rsi < rsiOversoldThreshold;
+        filters.add(f3
+                ? SignalFilter.pass("RSI_OVERSOLD",
+                String.format("RSI %.2f < %.0f (oversold ✅)", rsi, rsiOversoldThreshold))
+                : SignalFilter.fail("RSI_OVERSOLD",
+                String.format("RSI %.2f ≥ %.0f (need %.2f more drop)",
+                        rsi, rsiOversoldThreshold, rsi - rsiOversoldThreshold)));
+
+        // Filter 4: Bullish candle
+        boolean f4 = snapshot.getCurrentPrice().compareTo(snapshot.getBbLower()) >= 0;
+        filters.add(f4
+                ? SignalFilter.pass("BULLISH_CANDLE", "Bullish close above lower band ✅")
+                : SignalFilter.fail("BULLISH_CANDLE", "No bullish close above lower band"));
+
+        // Filter 5: Volume minimum
+        double vol = snapshot.getVolumeRatio().doubleValue();
+        boolean f5 = vol >= volumeMinMultiplier;
+        filters.add(f5
+                ? SignalFilter.pass("VOLUME_MINIMUM",
+                String.format("Volume %.2fx ≥ %.1fx ✅", vol, volumeMinMultiplier))
+                : SignalFilter.fail("VOLUME_MINIMUM",
+                String.format("Volume %.2fx < %.1fx (too thin)", vol, volumeMinMultiplier)));
+
+        // Filter 6: ATR
+        boolean f6 = !"EXTREME".equals(snapshot.getVolatilityZone());
+        filters.add(f6
+                ? SignalFilter.pass("VOLATILITY_CB",
+                String.format("ATR %s ✅", snapshot.getVolatilityZone()))
+                : SignalFilter.fail("VOLATILITY_CB", "ATR EXTREME — circuit breaker!"));
+
+        // Filter 7: Falling knife
+        double percentB = snapshot.getBbPercentB().doubleValue();
+        boolean f7 = percentB >= percentBMin;
+        filters.add(f7
+                ? SignalFilter.pass("FALLING_KNIFE_PROTECTION",
+                String.format("%%B %.4f ≥ %.2f ✅", percentB, percentBMin))
+                : SignalFilter.fail("FALLING_KNIFE_PROTECTION",
+                String.format("%%B %.4f < %.2f (price falling too fast)", percentB, percentBMin)));
+
+        return filters;
+    }
 }
