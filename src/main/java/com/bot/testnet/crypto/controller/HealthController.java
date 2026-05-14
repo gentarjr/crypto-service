@@ -1,6 +1,6 @@
 package com.bot.testnet.crypto.controller;
 
-import com.bot.testnet.crypto.model.HealthStatus;
+import com.bot.testnet.crypto.model.response.HealthStatusResponse;
 import com.bot.testnet.crypto.service.health.HealthCheckService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -28,7 +28,7 @@ public class HealthController {
      * Pakai cache (refresh tiap 30 detik)
      */
     @GetMapping("/bot-health")
-    public HealthStatus botHealth() {
+    public HealthStatusResponse botHealth() {
         return healthCheckService.getStatus();
     }
 
@@ -36,7 +36,7 @@ public class HealthController {
      * Force refresh health check (skip cache)
      */
     @GetMapping("/bot-health/refresh")
-    public HealthStatus botHealthRefresh() {
+    public HealthStatusResponse botHealthRefresh() {
         return healthCheckService.forceRefresh();
     }
 }

@@ -1,4 +1,4 @@
-package com.bot.testnet.crypto.model;
+package com.bot.testnet.crypto.model.response;
 
 import lombok.Builder;
 import lombok.Data;
@@ -9,15 +9,15 @@ import java.util.List;
 
 @Data
 @Builder
-public class HealthStatus {
+public class HealthStatusResponse {
 
     private boolean healthy;
     private Instant checkedAt;
     private List<String> issues;
     private long checkDurationMs;
 
-    public static HealthStatus healthy(long durationMs) {
-        return HealthStatus.builder()
+    public static HealthStatusResponse healthy(long durationMs) {
+        return HealthStatusResponse.builder()
                 .healthy(true)
                 .checkedAt(Instant.now())
                 .issues(new ArrayList<>())
@@ -25,8 +25,8 @@ public class HealthStatus {
                 .build();
     }
 
-    public static HealthStatus unhealthy(List<String> issues, long durationMs) {
-        return HealthStatus.builder()
+    public static HealthStatusResponse unhealthy(List<String> issues, long durationMs) {
+        return HealthStatusResponse.builder()
                 .healthy(false)
                 .checkedAt(Instant.now())
                 .issues(issues)

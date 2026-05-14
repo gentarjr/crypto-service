@@ -1,6 +1,8 @@
 package com.bot.testnet.crypto.service.health;
 
-import com.bot.testnet.crypto.model.HealthStatus;
+import com.bot.testnet.crypto.model.request.GetBalanceCurrencyRequest;
+import com.bot.testnet.crypto.model.request.GetCurrentPriceRequest;
+import com.bot.testnet.crypto.model.response.HealthStatusResponse;
 import com.bot.testnet.crypto.service.exchange.BinanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -33,15 +35,15 @@ public class HealthCheckService {
     private long maxClockSkewMs;
 
     // Cache untuk hindari spam API
-    private HealthStatus cachedStatus;
+    private HealthStatusResponse cachedStatus;
     private Instant cacheExpiry = Instant.MIN;
 
     public boolean isHealthy() {
-        HealthStatus status = getStatus();
+        HealthStatusResponse status = getStatus();
         return status.isHealthy();
     }
 
-    public HealthStatus getStatus() {
+    public HealthStatusResponse getStatus() {
         // Pakai cache kalau belum expired
         if (cachedStatus != null && Instant.now().isBefore(cacheExpiry)) {
             log.debug("🏥 Using cached health status (healthy={})", cachedStatus.isHealthy());
@@ -67,7 +69,7 @@ public class HealthCheckService {
      * Force refresh health check (skip cache)
      * Berguna kalau habis recover dari error
      */
-    public HealthStatus forceRefresh() {
+    public HealthStatusResponse forceRefresh() {
         cacheExpiry = Instant.MIN;
         return getStatus();
     }
@@ -75,7 +77,7 @@ public class HealthCheckService {
     /**
      * Lakukan semua health check
      */
-    private HealthStatus performFullCheck() {
+    private HealthStatusResponse performFullCheck() {
         long startTime = System.currentTimeMillis();
         List<String> issues = new ArrayList<>();
 
@@ -94,8 +96,8 @@ public class HealthCheckService {
         long duration = System.currentTimeMillis() - startTime;
 
         return issues.isEmpty()
-                ? HealthStatus.healthy(duration)
-                : HealthStatus.unhealthy(issues, duration);
+                ? HealthStatusResponse.healthy(duration)
+                : HealthStatusResponse.unhealthy(issues, duration);
     }
 
     /**
@@ -104,7 +106,10 @@ public class HealthCheckService {
     private void checkBinanceApiReachable(List<String> issues) {
         try {
             // Hit public endpoint (tidak butuh auth) - get ticker BTC/USDT
-            binanceService.getCurrentPrice("BTC", "USDT");
+            binanceService.getCurrentPrice(GetCurrentPriceRequest.builder()
+                            .base("BTC")
+                            .quote("USD")
+                    .build());
         } catch (Exception e) {
             issues.add("Binance API unreachable: " + e.getMessage());
             log.error("❌ Binance API unreachable", e);
@@ -146,7 +151,9 @@ public class HealthCheckService {
      */
     private void checkSufficientBalance(List<String> issues) {
         try {
-            BigDecimal available = binanceService.getBalance(quoteCurrency).getAvailable();
+            BigDecimal available = binanceService.getBalance(GetBalanceCurrencyRequest.builder()
+                            .currency(quoteCurrency)
+                    .build()).getAvailable();
 
             if (available.compareTo(minQuoteBalance) < 0) {
                 issues.add(String.format(

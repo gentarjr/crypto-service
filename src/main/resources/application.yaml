@@ -28,11 +28,86 @@ trading:
     cache-duration-seconds: 30
     min-quote-balance: 10
     max-clock-skew-ms: 1000
+  pair:
+    base: BNB
+    quote: USDT
+  market-data:
+    primary-interval: m15
+    cache-size: 200
+    fetch-interval-seconds: 60
+  indicators:
+    ema-fast-period: 9
+    ema-slow-period: 21
+    rsi-period: 14
+    rsi-overbought: 70
+    rsi-oversold: 30
+    volume-ma-period: 20
+    volume-surge-multiplier: 1.5
+    volume-extreme-multiplier: 2.5
+    volume-low-threshold: 0.5
+    atr-period: 14
+    atr-sl-multiplier: 1.5      # untuk SL Strategi 1
+    atr-tp-multiplier: 2.0      # untuk TP Strategi 1
+    atr-bb-sl-multiplier: 0.5   # untuk SL Strategi 2 (BB)
+    bb-period: 20
+    bb-std-dev: 2.0
+    bb-squeeze-threshold: 1.5
+    adx-period: 14
+    adx-ranging-threshold: 20      # ADX < 20 → ranging
+    adx-trending-threshold: 25     # ADX > 25 → trending
+    adx-strong-trend-threshold: 40 # ADX > 40 → very strong
+  strategy:
+    ema:
+      enabled: true
+      volume-surge-multiplier: 1.5      # volume harus >= 1.5x MA
+      rsi-max-threshold: 70             # RSI tidak boleh > 70 saat entry
+      price-extension-max: 1.03         # price tidak boleh > 3% dari EMA21
+      atr-extreme-multiplier: 2.5       # ATR dianggap extreme kalau > 2.5x average
+    bb:
+      enabled: true
+      rsi-oversold-threshold: 30        # RSI harus < 30
+      volume-min-multiplier: 0.5        # volume minimal 0.5x MA (tidak terlalu sepi)
+      percent-b-min: -0.1               # %B tidak boleh < -0.1 (catch falling knife protection)
+      sl-atr-multiplier: 0.5
+  risk:
+    modal: 300
+    risk-per-trade-percent: 1.0    # 1% per trade = $3
+    sl-atr-multiplier: 1.5
+    tp-atr-multiplier: 2.0
+    max-daily-loss-percent: 3.0       # ✨ NEW
+    max-consecutive-losses: 3
+    max-position-percent: 90.0
+    cooldown-minutes: 30
+    trailing-atr-multiplier: 1.5
+  websocket:
+    base-url: wss://stream.binance.vision/ws   # testnet
+    reconnect-delay-seconds: 5
+    max-reconnect-attempts: 10
+    enabled: false
+  hours:
+    enabled: false
+    start-utc: 8    # 08:00 UTC = 15:00 WIB
+    end-utc: 21     # 21:00 UTC = 04:00 WIB
+  mta:
+    enabled: true
+    ema-period: 50                    # EMA50 di timeframe 1h
+    cache-duration-minutes: 30        # Refresh setiap 30 menit
+  live:
+    enabled: true
+telegram:
+  enabled: true
+  bot-token: ${TELEGRAM_BOT_TOKEN}
+  chat-id: ${TELEGRAM_CHAT_ID}
+  parse-mode: HTML
+  api-url: https://api.telegram.org
 
 balance:
   symbol: BTC|BNB|USDT|SOL|ETH
 
 logging:
-  level:
-    org.knowm.xchange: DEBUG
-    com.tradingbot: DEBUG
+  file:
+    name: logs/crypto-bot.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
