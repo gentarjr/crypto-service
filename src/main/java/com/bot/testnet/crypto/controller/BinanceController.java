@@ -1,5 +1,6 @@
 package com.bot.testnet.crypto.controller;
 
+import com.bot.testnet.crypto.model.dto.Signal;
 import com.bot.testnet.crypto.model.request.GetBalanceCurrencyRequest;
 import com.bot.testnet.crypto.model.request.GetCurrentPriceRequest;
 import com.bot.testnet.crypto.model.request.PostBuyRequest;
@@ -8,10 +9,7 @@ import com.bot.testnet.crypto.model.response.GetCurrentPriceResponse;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.model.response.PostBuyResponse;
 import com.bot.testnet.crypto.model.response.PostSellResponse;
-import com.bot.testnet.crypto.service.exchange.BinanceBuyService;
-import com.bot.testnet.crypto.service.exchange.BinanceSellService;
-import com.bot.testnet.crypto.service.exchange.BinanceService;
-import com.bot.testnet.crypto.service.exchange.CandleService;
+import com.bot.testnet.crypto.service.exchange.*;
 import com.bot.testnet.crypto.service.indicator.IndicatorService;
 import com.bot.testnet.crypto.service.indicator.MultiTimeframeService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +31,7 @@ public class BinanceController {
     private final IndicatorService indicatorService;
     private final MultiTimeframeService multiTimeframeService;
     private final CandleService candleService;
+    private final AdaptiveSignalService adaptiveSignalService;
 
     @GetMapping("/price/{base}/{quote}")
     public GetCurrentPriceResponse getPrice(@PathVariable String base, @PathVariable String quote) {
@@ -95,5 +94,12 @@ public class BinanceController {
                         : "N/A",
                 "mtaBuyAllowed", "BULLISH".equals(trend1h)
         );
+    }
+
+    @GetMapping("/signal/adaptive")
+    public Signal testAdaptiveSignal(){
+        GetIndicatorResponse snapshot = indicatorService.calculate();
+        if (snapshot == null) return null;
+        return adaptiveSignalService.evaluate(snapshot);
     }
 }
