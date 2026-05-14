@@ -13,6 +13,9 @@ spring:
       enabled: false
   jpa:
     show-sql: false   # jangan spam log di production
+  web:
+    resources:
+      static-locations: file:/opt/cryptobot/static/, classpath:/static/
 
 # ═══════════════════════════════════════════════════════════
 #  BINANCE CONFIG
