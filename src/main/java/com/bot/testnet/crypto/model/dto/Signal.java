@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 @NoArgsConstructor
@@ -113,7 +115,7 @@ public class Signal {
         return Signal.builder()
                 .action(SignalAction.HOLD)
                 .strategy(StrategyType.NO_TRADE)
-                .timestamp(Instant.now())
+                .timestamp(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant())
                 .summary(reason)
                 .build();
     }
@@ -125,7 +127,7 @@ public class Signal {
         return Signal.builder()
                 .action(SignalAction.HOLD)
                 .strategy(strategy)
-                .timestamp(Instant.now())
+                .timestamp(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant())
                 .summary(reason)
                 .filters(filters)
                 .build();

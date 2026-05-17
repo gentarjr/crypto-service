@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Service
 @RequiredArgsConstructor
@@ -31,7 +33,7 @@ public class BinanceSellService {
      */
     @SneakyThrows
     public PostSellResponse placeMarketSellOrder(PostSellRequest request) {
-        Timestamp now = new Timestamp(System.currentTimeMillis());
+        Timestamp now = Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Jakarta")));
         String timestamp = ConvertUtils.convertTimestampToString(now, Constants.DATEFORMAT_YYYYMMDDT_HHMMSSSSSZ);
 
         CurrencyPair pair = new CurrencyPair(request.getBase(), request.getQuote());
