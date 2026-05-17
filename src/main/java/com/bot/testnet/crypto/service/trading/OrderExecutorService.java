@@ -21,10 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
+import java.time.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -100,7 +97,7 @@ public class OrderExecutorService {
 
     private boolean isWithinTradingHours() {
         if (!tradingHoursEnabled) return true;
-        int hour = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).getHour();
+        int hour = java.time.ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).getHour();
         boolean within = hour >= tradingHourStart && hour < tradingHourEnd;
         if (!within) {
             log.info("🕐 [LIVE] Outside trading hours (UTC {})", hour);
@@ -282,7 +279,7 @@ public class OrderExecutorService {
                         .highestPrice(actualEntry)
                         .trailingActive(false)
                         .status("OPEN")
-                        .openTime(Instant.now())
+                        .openTime(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant())
                         .build();
 
                 log.info("✅ [LIVE] Position OPENED #{}: entry=${}, qty={}, SL=${}, TP={}",
@@ -380,7 +377,7 @@ public class OrderExecutorService {
                 openPosition.setClosePrice(exitPrice);
                 openPosition.setRealizedPnl(pnl);
                 openPosition.setCloseReason(reason);
-                openPosition.setCloseTime(Instant.now());
+                openPosition.setCloseTime(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant());
                 openPosition.setStatus("CLOSED");
 
                 // Update stats
@@ -390,7 +387,7 @@ public class OrderExecutorService {
                 } else {
                     consecutiveLosses++;
                 }
-                lastCloseTime = Instant.now();
+                lastCloseTime = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
 
                 log.info("✅ [LIVE] Position CLOSED #{}: {} | P&L: ${}",
                         openPosition.getId(), reason,
@@ -589,13 +586,27 @@ public class OrderExecutorService {
     }
 
     private void checkAndResetDaily() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Jakarta"));
         if (lastResetDate == null || !lastResetDate.equals(today)) {
+            log.info("📅 [LIVE] Daily stats reset for {}", today);
+
+            boolean wasHalted = dailyHalted; // ✅ Simpan state SEBELUM reset
+
             dailyPnl = BigDecimal.ZERO;
             dailyHalted = false;
             consecutiveLosses = 0;
             lastResetDate = today;
-            log.info("📅 [LIVE] Daily stats reset for {}", today);
+
+            if (wasHalted) {  // ✅ Cek state yang lama
+                telegramService.sendMessage(
+                        "✅ [LIVE] Bot Resumed",
+                        String.format(
+                                "New day — daily limits reset\n\n" +
+                                        "📅 Date: %s\n" +
+                                        "💰 Ready to trade again!\n" +
+                                        "⏰ %s WIB",
+                                today, formatTime()));
+            }
         }
     }
 }

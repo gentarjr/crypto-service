@@ -4,6 +4,7 @@ import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
@@ -36,7 +37,7 @@ public class TradingHoursService {
             return true;  // Kalau disabled, always allow
         }
 
-        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
+        int currentHourUtc = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).getHour();
         boolean withinHours = currentHourUtc >= startHourUtc
                 && currentHourUtc < endHourUtc;
 
@@ -52,7 +53,7 @@ public class TradingHoursService {
      * Info jam trading untuk logging
      */
     public String getTradingHoursInfo() {
-        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
+        int currentHourUtc = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).getHour();
         return String.format("UTC %02d:xx | Active: %02d:00-%02d:00 UTC | Status: %s",
                 currentHourUtc, startHourUtc, endHourUtc,
                 isWithinTradingHours() ? "ACTIVE" : "CLOSED");

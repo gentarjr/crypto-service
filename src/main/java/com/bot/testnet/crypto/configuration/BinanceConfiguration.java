@@ -34,7 +34,13 @@ public class BinanceConfiguration {
 
         if (testnet) {
             spec.setExchangeSpecificParametersItem("Use_Sandbox", true);
-            log.info("⚠️  Using Binance TESTNET — no real money");
+            spec.setSslUri("https://testnet.binance.vision");
+            spec.setHost("testnet.binance.vision");
+            log.warn("⚠️  Using Binance TESTNET — no real money");
+        } else {
+            spec.setSslUri("https://api.binance.com");
+            spec.setHost("api.binance.com");
+            log.warn("🔴 Using Binance MAINNET — REAL MONEY!");
         }
 
         Exchange exchange = ExchangeFactory.INSTANCE.createExchange(spec);

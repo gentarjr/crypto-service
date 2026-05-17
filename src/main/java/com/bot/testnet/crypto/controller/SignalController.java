@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Map;
 
 @RestController
@@ -104,7 +106,7 @@ public class SignalController {
                     .takeProfit(tp)
                     .positionSize(BigDecimal.valueOf(100))
                     .riskAmount(BigDecimal.valueOf(3))
-                    .timestamp(java.time.Instant.now())
+                    .timestamp(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant())
                     .build();
 
             paperTradingService.updateSnapshot(snapshot);

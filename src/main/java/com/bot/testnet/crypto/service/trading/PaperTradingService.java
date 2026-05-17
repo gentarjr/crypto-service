@@ -85,7 +85,7 @@ public class PaperTradingService {
      * Reset daily stats kalau hari baru
      */
     private void checkAndResetDaily() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Jakarta"));
         if (lastResetDate == null || !lastResetDate.equals(today)) {
             todayStats = DailyStats.builder()
                     .date(today)
@@ -266,7 +266,7 @@ public class PaperTradingService {
                     .takeProfit(signal.getTakeProfit())
                     .highestPrice(currentPrice)              // ✨ Init highest = entry
                     .trailingActive(false)                   // ✨ Trail belum aktif
-                    .openTime(java.time.Instant.now())
+                    .openTime(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant())
                     .currentPrice(currentPrice)
                     .unrealizedPnl(BigDecimal.ZERO)
                     .build();
@@ -287,7 +287,7 @@ public class PaperTradingService {
     private void closePosition(BigDecimal exitPrice, String reason) {
         if (openPosition == null) return;
 
-        Instant closeTime = Instant.now();
+        Instant closeTime = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
         long durationMinutes = Duration.between(openPosition.getOpenTime(), closeTime).toMinutes();
 
         BigDecimal pnl = openPosition.calculateUnrealizedPnl(exitPrice);

@@ -156,6 +156,22 @@ public class GetSignalTradingService {
                     String.format("Volume %.2fx needs to be at least 0.5x",
                             snapshot.getVolumeRatio().doubleValue());
 
+            case "EMA_UPTREND" ->
+                    String.format("EMA9 (%.2f) needs to go ABOVE EMA21 (%.2f) — gap: %.2f",
+                            snapshot.getEmaFast().doubleValue(),
+                            snapshot.getEmaSlow().doubleValue(),
+                            snapshot.getEmaSlow().subtract(snapshot.getEmaFast()).doubleValue());
+
+            case "GOLDEN_CROSS" ->
+                    String.format("EMA9 needs to CROSS ABOVE EMA21 for max score (currently uptrend only)");
+
+            case "EMA_TREND_CONTINUATION" ->
+                    "EMA uptrend continuing — golden cross would add +20 more points";
+
+            case "ATR_EXTREME" ->
+                    String.format("ATR %.2f%% is EXTREME — wait for volatility to normalize",
+                            snapshot.getAtrPercent().doubleValue());
+
             default -> "Condition not yet met: " + filterName;
         };
     }

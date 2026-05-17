@@ -62,19 +62,31 @@ public class CandleScheduler {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         log.info("🚀 Bot fully started!");
-        telegramService.sendMessage(
-                "🤖 Bot Started",
-                String.format(
-                        "✅ Crypto Bot ONLINE\n\n" +
-                                "📋 Config:\n" +
-                                "   Pair: <b>BNB/USDT</b>\n" +
-                                "   Timeframe: <b>m15</b>\n" +
-                                "   Live Trading: <b>%s</b>\n" +
-                                "   Paper Trading: <b>Active</b>\n\n" +
-                                "💰 Balance akan di-fetch saat signal pertama\n\n" +
-                                "⏰ %s WIB",
-                        orderExecutorService.isEnabled() ? "ENABLED ✅" : "DISABLED ❌",
-                        formatTime()));
+        try {
+            BigDecimal balance = balanceService.getAvailableCapital();
+            String mode = System.getenv().getOrDefault("BINANCE_TESTNET", "true")
+                    .equals("true") ? "TESTNET 🟡" : "MAINNET 🔴";
+
+            telegramService.sendMessage(
+                    "🤖 Bot Started",
+                    String.format(
+                            "✅ Crypto Bot ONLINE\n\n" +
+                                    "🌐 Mode: <b>%s</b>\n" +
+                                    "💰 Balance: <b>$%.2f USDT</b>\n" +
+                                    "📊 Pair: <b>BNB/USDT</b>\n" +
+                                    "⏱ Timeframe: <b>m15</b>\n" +
+                                    "📈 Live Trading: <b>%s</b>\n\n" +
+                                    "⚠️ Cek posisi terbuka di Binance jika restart!\n\n" +
+                                    "⏰ %s WIB",
+                            mode,
+                            balance.doubleValue(),
+                            orderExecutorService.isEnabled() ? "ENABLED ✅" : "DISABLED ❌",
+                            formatTime()));
+        } catch (Exception e) {
+            log.error("Failed to send startup notification", e);
+            telegramService.sendMessage("🤖 Bot Started",
+                    "✅ Online — balance fetch failed: " + e.getMessage());
+        }
     }
 
     /**
@@ -162,7 +174,7 @@ public class CandleScheduler {
         }
     }
 
-    @Scheduled(cron = "0 0 1 * * *")
+    @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Jakarta")
     public void sendMorningHealthCheck() {
         try {
             BigDecimal balance = balanceService.getAvailableCapital();
@@ -361,7 +373,7 @@ public class CandleScheduler {
         }
 
         msg.append(String.format("\n⏰ %s WIB",
-                java.time.LocalDateTime.now()
+                java.time.LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
                         .format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))));
 
         telegramService.sendMessage(title, msg.toString());
@@ -426,7 +438,7 @@ public class CandleScheduler {
         }
 
         msg.append(String.format("\n⏰ %s WIB",
-                java.time.LocalDateTime.now()
+                java.time.LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
                         .format(java.time.format.DateTimeFormatter
                                 .ofPattern("dd-MM-yyyy HH:mm:ss"))));
 

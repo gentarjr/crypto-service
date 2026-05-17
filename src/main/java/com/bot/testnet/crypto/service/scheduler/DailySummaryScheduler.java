@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -25,21 +26,28 @@ public class DailySummaryScheduler {
     /**
      * Daily summary setiap jam 23:59:00
      */
-    @Scheduled(cron = "0 59 23 * * *")
+    @Scheduled(cron = "0 59 23 * * *", zone = "Asia/Jakarta")  // ✅ Tambah zone WIB
     public void sendDailySummary() {
         log.info("📊 Sending daily summary...");
 
         DailyStats stats = paperTradingService.getTodayStats();
 
+        String title = "📊 Daily Summary — " +
+                LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
+                        .format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+
+        StringBuilder msg = new StringBuilder();
+
         if (stats == null || stats.getTotalTrades() == 0) {
-            log.info("No trades today, skip summary");
+            msg.append("📭 No trades today\n\n");
+            msg.append(String.format("💰 Capital: <b>$%.2f</b>\n",
+                    paperTradingService.getCurrentCapital().doubleValue()));
+            msg.append("🤖 Bot is monitoring the market...");
+            telegramService.sendMessage(title, msg.toString());
+            log.info("✅ Daily summary sent (no trades)");
             return;
         }
 
-        String title = "📊 Daily Summary — " +
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
-
-        StringBuilder msg = new StringBuilder();
         msg.append(String.format("💰 Capital: <b>$%.2f</b> / $%.2f\n",
                 paperTradingService.getCurrentCapital().doubleValue(),
                 stats.getStartingCapital().doubleValue()));
@@ -55,52 +63,41 @@ public class DailySummaryScheduler {
         msg.append(String.format("❌ Loss: %d\n", stats.getLosses()));
         msg.append(String.format("🎯 Win Rate: %.1f%%\n\n", stats.getWinRate()));
 
-        // Trade list
         if (stats.getTrades() != null && !stats.getTrades().isEmpty()) {
             msg.append("<b>Trade Details:</b>\n");
             stats.getTrades().forEach(t -> {
                 String tEmoji = t.isWin() ? "✅" : "❌";
-                msg.append(String.format("%s #%s | %s | $%.2f (%.2f%%) | %dm\n",
-                        tEmoji,
-                        t.getId(),
-                        t.getStrategy(),
+                msg.append(String.format("%s #%s | %s | $%.4f (%.2f%%) | %dm\n",
+                        tEmoji, t.getId(), t.getStrategy(),
                         t.getPnl().doubleValue(),
                         t.getPnlPercent().doubleValue(),
                         t.getDurationMinutes()));
             });
         }
 
-        msg.append(String.format("\n🤖 Status: %s",
+        msg.append(String.format("\n🤖 Status: %s\n",
                 stats.isHalted() ? "HALTED 🛑" : "ACTIVE ✅"));
+        msg.append(String.format("⏰ %s WIB", formatTime()));
 
         telegramService.sendMessage(title, msg.toString());
         log.info("✅ Daily summary sent");
     }
 
-    /**
-     * Hourly mini-update (opsional, bisa di-disable)
-     * Setiap jam di menit ke-0
-     */
-    @Scheduled(cron = "0 0 * * * *")
+    // ✅ Fix hourly — hanya log, TIDAK kirim Telegram
+    @Scheduled(cron = "0 0 * * * *", zone = "Asia/Jakarta")
     public void sendHourlyUpdate() {
         DailyStats stats = paperTradingService.getTodayStats();
+        if (stats == null || stats.getTotalTrades() == 0) return;
 
-        if (stats == null || stats.getTotalTrades() == 0) {
-            return;  // Skip kalau belum ada trade hari ini
-        }
+        // Hanya log, tidak kirim Telegram
+        log.info("⏰ Hourly: trades={}, P&L=${}, capital=${}",
+                stats.getTotalTrades(),
+                stats.getTotalPnl(),
+                paperTradingService.getCurrentCapital());
+    }
 
-        log.info("⏰ Hourly update: trades={}, P&L={}",
-                stats.getTotalTrades(), stats.getTotalPnl());
-
-        // Hanya log, tidak kirim Telegram untuk avoid spam
-        // Uncomment kalau mau kirim:
-
-        telegramService.sendMessage(
-                "⏰ Hourly Update",
-                String.format("Trades: %d | P&L: $%.2f | Capital: $%.2f",
-                        stats.getTotalTrades(),
-                        stats.getTotalPnl().doubleValue(),
-                        paperTradingService.getCurrentCapital().doubleValue()));
-
+    private String formatTime() {
+        return LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
+                .format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
     }
 }
