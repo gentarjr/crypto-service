@@ -63,29 +63,38 @@ public class CandleScheduler {
     public void onApplicationReady() {
         log.info("🚀 Bot fully started!");
         try {
-            BigDecimal balance = balanceService.getAvailableCapital();
-            String mode = System.getenv().getOrDefault("BINANCE_TESTNET", "true")
-                    .equals("true") ? "TESTNET 🟡" : "MAINNET 🔴";
+            BigDecimal usdtBalance = balanceService.getAvailableCapital();
+
+            // ✅ Cek balance BNB juga — kalau ada → kemungkinan ada posisi terbuka!
+            BigDecimal bnbBalance = balanceService.getAvailableBnb();
+
+            boolean possibleOrphanPosition = bnbBalance.compareTo(new BigDecimal("0.01")) > 0;
+
+            String warning = possibleOrphanPosition
+                    ? "\n\n🚨 <b>WARNING:</b> Detected " + bnbBalance + " BNB in account!\n" +
+                    "Possible orphan position from previous run!\n" +
+                    "Bot does NOT track this position — close manually jika perlu!\n"
+                    : "";
 
             telegramService.sendMessage(
                     "🤖 Bot Started",
                     String.format(
                             "✅ Crypto Bot ONLINE\n\n" +
-                                    "🌐 Mode: <b>%s</b>\n" +
-                                    "💰 Balance: <b>$%.2f USDT</b>\n" +
-                                    "📊 Pair: <b>BNB/USDT</b>\n" +
-                                    "⏱ Timeframe: <b>m15</b>\n" +
-                                    "📈 Live Trading: <b>%s</b>\n\n" +
-                                    "⚠️ Cek posisi terbuka di Binance jika restart!\n\n" +
+                                    "📋 Config:\n" +
+                                    "   Pair: <b>BNB/USDT</b>\n" +
+                                    "   Timeframe: <b>m15</b>\n" +
+                                    "   Live Trading: <b>%s</b>\n" +
+                                    "   Paper Trading: <b>Active</b>\n\n" +
+                                    "💰 USDT Balance: <b>$%.2f</b>\n" +
+                                    "🪙 BNB Balance:  <b>%.4f BNB</b>%s\n\n" +
                                     "⏰ %s WIB",
-                            mode,
-                            balance.doubleValue(),
                             orderExecutorService.isEnabled() ? "ENABLED ✅" : "DISABLED ❌",
+                            usdtBalance.doubleValue(),
+                            bnbBalance.doubleValue(),
+                            warning,
                             formatTime()));
         } catch (Exception e) {
-            log.error("Failed to send startup notification", e);
-            telegramService.sendMessage("🤖 Bot Started",
-                    "✅ Online — balance fetch failed: " + e.getMessage());
+            log.error("Failed to send startup notification: {}", e.getMessage());
         }
     }
 
@@ -174,7 +183,7 @@ public class CandleScheduler {
         }
     }
 
-    @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Jakarta")
+    @Scheduled(cron = "0 0 8 * * *", zone = "Asia/Jakarta")
     public void sendMorningHealthCheck() {
         try {
             BigDecimal balance = balanceService.getAvailableCapital();

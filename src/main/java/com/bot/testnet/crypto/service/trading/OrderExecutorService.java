@@ -244,6 +244,52 @@ public class OrderExecutorService {
             log.info("📋 [LIVE] BUY {} {} @ ~${} (size: ${})",
                     quantity, baseCurrency, currentPrice, positionSize);
 
+            BigDecimal signalPrice = signal.getPrice();
+            if (signalPrice != null && signalPrice.compareTo(BigDecimal.ZERO) > 0) {
+                try {
+                    // ✅ Fetch harga real-time dari Binance, BUKAN dari snapshot
+                    BigDecimal realTimePrice = binanceService.getCurrentPrice(
+                            GetCurrentPriceRequest.builder()
+                                    .base(baseCurrency)
+                                    .quote(quoteCurrency)
+                                    .build()).getPrice();
+
+                    BigDecimal slippagePct = realTimePrice.subtract(signalPrice)
+                            .divide(signalPrice, 6, RoundingMode.HALF_UP)
+                            .multiply(BigDecimal.valueOf(100))
+                            .abs();
+
+                    BigDecimal maxSlippagePct = new BigDecimal("0.5");
+
+                    if (slippagePct.compareTo(maxSlippagePct) > 0) {
+                        log.warn("⚠️ Slippage too high: signal=${} → real-time=${} ({}%)",
+                                signalPrice, realTimePrice, slippagePct);
+                        telegramService.sendMessage(
+                                "⚠️ [LIVE] Order Skipped — High Slippage",
+                                String.format(
+                                        "Signal price: $%.4f\n" +
+                                                "Real-time:    $%.4f\n" +
+                                                "Slippage: %.2f%% (max %.2f%%)\n\n" +
+                                                "Order cancelled.\n⏰ %s WIB",
+                                        signalPrice.doubleValue(),
+                                        realTimePrice.doubleValue(),
+                                        slippagePct.doubleValue(),
+                                        maxSlippagePct.doubleValue(),
+                                        formatTime()));
+                        return;
+                    }
+
+                    // Update currentPrice ke harga real-time supaya entry akurat
+                    currentPrice = realTimePrice;
+                    log.info("✅ Slippage ok: {}% (using real-time price ${})",
+                            slippagePct, realTimePrice);
+
+                } catch (Exception e) {
+                    log.warn("⚠️ Cannot fetch real-time price, using snapshot price: {}",
+                            e.getMessage());
+                }
+            }
+
             // 3. Place market order
             var orderResult = binanceBuyService.placeMarketBuyOrder(
                     buildBuyRequest(quantity));
@@ -258,10 +304,40 @@ public class OrderExecutorService {
                 return;
             }
 
-            // 5. Create live position
-            BigDecimal actualEntry = orderResult.getBalanceAfter() != null
-                    ? currentPrice  // use current price as proxy
-                    : currentPrice;
+            BigDecimal actualEntry = currentPrice;  // default fallback
+
+            if (orderResult.getFilledAmount() != null
+                    && orderResult.getFilledAmount().compareTo(BigDecimal.ZERO) > 0) {
+
+                actualEntry = positionSize.divide(
+                        orderResult.getFilledAmount(),
+                        6,
+                        RoundingMode.HALF_UP);
+
+                BigDecimal slippagePct = actualEntry.subtract(currentPrice)
+                        .divide(currentPrice, 6, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100));
+
+                log.info("📌 Actual entry: ${} | Requested: ${} | Slippage: {}%",
+                        actualEntry, currentPrice, slippagePct);
+
+                // Alert kalau slippage > 0.5%
+                if (slippagePct.abs().compareTo(new BigDecimal("0.5")) > 0) {
+                    log.warn("⚠️ High slippage: {}%", slippagePct);
+                    telegramService.sendMessage(
+                            "⚠️ [LIVE] High Slippage Detected",
+                            String.format(
+                                    "Requested: $%.4f\n" +
+                                            "Actual:    $%.4f\n" +
+                                            "Slippage:  %.2f%%\n\n" +
+                                            "Position will still open with actual entry price.",
+                                    currentPrice.doubleValue(),
+                                    actualEntry.doubleValue(),
+                                    slippagePct.doubleValue()));
+                }
+            } else {
+                log.warn("⚠️ No filledAmount in order result, using currentPrice as proxy");
+            }
 
             positionLock.lock();
             try {
@@ -320,6 +396,26 @@ public class OrderExecutorService {
         if (openPosition == null) return;
 
         openPosition.updateHighestPrice(currentPrice);
+
+        if (openPosition.getOpenTime() != null) {
+            long minutesOpen = Duration.between(
+                    openPosition.getOpenTime(),
+                    Instant.now()).toMinutes();
+
+            if (minutesOpen > 240 && !openPosition.isTrailingActive()) {
+                log.warn("⏰ [LIVE] Position #{} stagnant for {}m without progress, force close",
+                        openPosition.getId(), minutesOpen);
+                telegramService.sendMessage(
+                        "⏰ [LIVE] Force Close — Stagnant Position",
+                        String.format(
+                                "Position #%s open %d minutes without trailing activation\n" +
+                                        "No progress → closing at market price\n" +
+                                        "⏰ %s WIB",
+                                openPosition.getId(), minutesOpen, formatTime()));
+                closeLivePosition(currentPrice, "TIMEOUT_NO_PROGRESS");
+                return;
+            }
+        }
 
         // Update trailing SL (EMA strategy only)
         if (lastSnapshot != null

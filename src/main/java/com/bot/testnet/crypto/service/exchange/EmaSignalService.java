@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +26,7 @@ public class EmaSignalService implements SignalService {
 
     private final MultiTimeframeService multiTimeframeService;
     private final CandleService candleService;
+    private final BalanceService balanceService;
 
     // ─── Config ───────────────────────────────────────
     @Value("${trading.indicators.adx-trending-threshold:25}")
@@ -227,6 +230,20 @@ public class EmaSignalService implements SignalService {
         // ═══════════════════════════════════════
         // DECISION
         // ═══════════════════════════════════════
+
+        // Di EmaSignalService — tambah scoring:
+        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
+        boolean isPeakHour = (currentHourUtc >= 0 && currentHourUtc < 21);
+
+        if (isPeakHour) {
+            score += 5;
+            filters.add(SignalFilter.pass("PEAK_HOURS",
+                    String.format("+5pts | Trading in peak hours (UTC %d) ✅", currentHourUtc)));
+        } else {
+            filters.add(SignalFilter.fail("PEAK_HOURS",
+                    String.format("+0pts | Trading in dead hours (UTC %d)", currentHourUtc)));
+        }
+
         score = Math.min(score, 100);
         log.info("📊 [EMA] Score: {}/100 | Threshold: {}", score, buyScoreThreshold);
 
@@ -260,15 +277,30 @@ public class EmaSignalService implements SignalService {
                 .divide(price, 6, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));
 
-        // ✅ Pakai modal dari @Value (sama seperti code Anda)
-        BigDecimal riskAmount = BigDecimal.valueOf(modal * riskPerTradePercent / 100);
+        BigDecimal availableCapital;
+        try {
+            availableCapital = balanceService.getAvailableCapital();
+            if (availableCapital == null || availableCapital.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("Balance is 0/null, using modal fallback: ${}", modal);
+                availableCapital = BigDecimal.valueOf(modal);
+            } else {
+                log.info("💰 Using real balance: ${}", availableCapital);
+            }
+        } catch (Exception e) {
+            log.warn("Cannot fetch balance, using modal fallback: ${} | Error: {}",
+                    modal, e.getMessage());
+            availableCapital = BigDecimal.valueOf(modal);
+        }
+
+        BigDecimal riskAmount = availableCapital
+                .multiply(BigDecimal.valueOf(riskPerTradePercent / 100));
 
         BigDecimal calculatedPos = riskAmount.divide(
                 slDistancePct.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP),
                 2, RoundingMode.HALF_UP);
 
-        // Cap + position multiplier (strong buy = full, normal = 75%)
-        BigDecimal maxPos = BigDecimal.valueOf(modal * maxPositionPercent / 100)
+        BigDecimal maxPos = availableCapital
+                .multiply(BigDecimal.valueOf(maxPositionPercent / 100))
                 .multiply(BigDecimal.valueOf(posMultiplier));
         BigDecimal positionSize = calculatedPos.min(maxPos);
 
@@ -278,6 +310,19 @@ public class EmaSignalService implements SignalService {
 
         BigDecimal rrRatio = takeProfit.subtract(price)
                 .divide(price.subtract(stopLoss), 2, RoundingMode.HALF_UP);
+
+        BigDecimal minRrRatio = new BigDecimal("1.2");
+        if (rrRatio.compareTo(minRrRatio) < 0) {
+            log.warn("⚠️ [EMA] R:R ratio too low: 1:{} (min 1:{}) — skip",
+                    rrRatio, minRrRatio);
+            filters.add(SignalFilter.fail("RISK_REWARD",
+                    String.format("R:R 1:%.2f < min 1:%.1f",
+                            rrRatio.doubleValue(), minRrRatio.doubleValue())));
+            return Signal.hold(StrategyType.EMA_CROSSOVER,
+                    String.format("R:R ratio %.2f below minimum %.1f",
+                            rrRatio.doubleValue(), minRrRatio.doubleValue()),
+                    filters);
+        }
 
         String signalType = score >= strongBuyScoreThreshold ? "🚀 STRONG BUY" : "✅ BUY";
         String summary = String.format(

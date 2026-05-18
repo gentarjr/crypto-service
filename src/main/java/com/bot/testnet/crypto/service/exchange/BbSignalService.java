@@ -5,6 +5,7 @@ import com.bot.testnet.crypto.model.dto.SignalAction;
 import com.bot.testnet.crypto.model.dto.SignalFilter;
 import com.bot.testnet.crypto.model.dto.StrategyType;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -17,8 +18,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 @Log4j2
 public class BbSignalService implements SignalService {
+    private final BalanceService balanceService;
 
     @Value("${trading.indicators.adx-ranging-threshold:20}")
     private double adxRangingThreshold;
@@ -35,10 +38,10 @@ public class BbSignalService implements SignalService {
     @Value("${trading.strategy.bb.sl-atr-multiplier:0.5}")
     private double slAtrMultiplier;
 
-    @Value("${trading.strategy.bb.buy-score-threshold:55}")
+    @Value("${trading.strategy.bb.buy-score-threshold:60}")
     private int buyScoreThreshold;
 
-    @Value("${trading.strategy.bb.strong-buy-score-threshold:75}")
+    @Value("${trading.strategy.bb.strong-buy-score-threshold:80}")
     private int strongBuyScoreThreshold;
 
     @Value("${trading.risk.modal:300}")
@@ -271,7 +274,20 @@ public class BbSignalService implements SignalService {
             rrRatio = tpDistance.divide(slDistance, 2, RoundingMode.HALF_UP);
         }
 
-        BigDecimal riskAmount = BigDecimal.valueOf(modal * riskPerTradePercent / 100);
+        BigDecimal availableCapital;
+        try {
+            availableCapital = balanceService.getAvailableCapital();
+            if (availableCapital == null || availableCapital.compareTo(BigDecimal.ZERO) <= 0) {
+                availableCapital = BigDecimal.valueOf(modal);
+            }
+        } catch (Exception e) {
+            log.warn("Cannot fetch balance, using modal fallback");
+            availableCapital = BigDecimal.valueOf(modal);
+        }
+
+        BigDecimal riskAmount = availableCapital
+                .multiply(BigDecimal.valueOf(riskPerTradePercent / 100));
+
         BigDecimal calculatedPos = BigDecimal.ZERO;
         if (slDistancePct.compareTo(BigDecimal.ZERO) > 0) {
             calculatedPos = riskAmount.divide(
@@ -279,7 +295,8 @@ public class BbSignalService implements SignalService {
                     2, RoundingMode.HALF_UP);
         }
 
-        BigDecimal maxPos = BigDecimal.valueOf(modal * maxPositionPercent / 100)
+        BigDecimal maxPos = availableCapital
+                .multiply(BigDecimal.valueOf(maxPositionPercent / 100))
                 .multiply(BigDecimal.valueOf(posMultiplier));
         BigDecimal positionSize = calculatedPos.min(maxPos);
 

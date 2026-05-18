@@ -67,4 +67,15 @@ public class BalanceService {
             return BigDecimal.valueOf(fallbackModal);
         }
     }
+
+    public BigDecimal getAvailableBnb() {
+        try {
+            return binanceService.getBalance(GetBalanceCurrencyRequest.builder()
+                    .currency("BNB")
+                    .build()).getAvailable();
+        } catch (Exception e) {
+            log.error("Cannot fetch BNB balance: {}", e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
 }

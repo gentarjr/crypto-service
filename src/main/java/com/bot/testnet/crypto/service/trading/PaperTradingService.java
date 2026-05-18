@@ -157,6 +157,26 @@ public class PaperTradingService {
         openPosition.setUnrealizedPnl(
                 openPosition.calculateUnrealizedPnl(currentPrice));
 
+        if (openPosition.getOpenTime() != null) {
+            long minutesOpen = Duration.between(
+                    openPosition.getOpenTime(),
+                    Instant.now()).toMinutes();
+
+            if (minutesOpen > 240 && !openPosition.isTrailingActive()) {
+                log.warn("⏰ [LIVE] Position #{} stagnant for {}m without progress, force close",
+                        openPosition.getId(), minutesOpen);
+                telegramService.sendMessage(
+                        "⏰ [LIVE] Force Close — Stagnant Position",
+                        String.format(
+                                "Position #%s open %d minutes without trailing activation\n" +
+                                        "No progress → closing at market price\n" +
+                                        "⏰ %s WIB",
+                                openPosition.getId(), minutesOpen, formatTime()));
+                closePositionRealTime(currentPrice, "TIMEOUT_NO_PROGRESS");
+                return;
+            }
+        }
+
         // ✨ Update trailing SL (hanya EMA strategy)
         if (lastSnapshot != null && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
             trailingStopHelper.update(openPosition, currentPrice, lastSnapshot.getAtr(), "PAPER");
