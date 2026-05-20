@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -211,7 +213,7 @@ public class SentimentService {
 
     private void refreshLunarCrush() {
         if (cachedLC != null &&
-                Instant.now().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
+                ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
             return;
         }
         try {
@@ -243,7 +245,7 @@ public class SentimentService {
                         d.getTypesInteractions());
 
                 cachedLC    = newData;
-                lastFetchLC = Instant.now();
+                lastFetchLC = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
 
                 double spikeChg = getSocialVolumeChangePercent();
                 log.info("📊 [LUNARCRUSH] BNB: sentiment={}, trend={}, interactions={}, spike={}%",
@@ -258,7 +260,7 @@ public class SentimentService {
 
     private void refreshFearAndGreed() {
         // Update FNG tiap 6 jam (update harian, tidak perlu sering)
-        if (Instant.now().isBefore(lastFetchFNG.plusSeconds(6 * 3600))) return;
+        if (ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant().isBefore(lastFetchFNG.plusSeconds(6 * 3600))) return;
         try {
             FearGreedResponse resp = restTemplate.getForObject(
                     "https://api.alternative.me/fng/?limit=1",
@@ -267,7 +269,7 @@ public class SentimentService {
             if (resp != null && resp.getData() != null && !resp.getData().isEmpty()) {
                 cachedFNG      = Integer.parseInt(resp.getData().get(0).getValue());
                 cachedFNGLabel = resp.getData().get(0).getValueClassification();
-                lastFetchFNG   = Instant.now();
+                lastFetchFNG   = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
                 log.info("📊 [FEAR&GREED] Score: {} ({})", cachedFNG, cachedFNGLabel);
             }
         } catch (Exception e) {
