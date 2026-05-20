@@ -358,26 +358,48 @@ public class OrderExecutorService {
                         6,
                         RoundingMode.HALF_UP);
 
+                // Setelah order fill, cek actual slippage
                 BigDecimal slippagePct = actualEntry.subtract(currentPrice)
                         .divide(currentPrice, 6, RoundingMode.HALF_UP)
                         .multiply(BigDecimal.valueOf(100));
 
-                log.info("📌 Actual entry: ${} | Requested: ${} | Slippage: {}%",
-                        actualEntry, currentPrice, slippagePct);
-
-                // Alert kalau slippage > 0.5%
-                if (slippagePct.abs().compareTo(new BigDecimal("0.5")) > 0) {
-                    log.warn("⚠️ High slippage: {}%", slippagePct);
+// ✅ Pakai @Value threshold
+                if (slippagePct.abs().compareTo(BigDecimal.valueOf(maxSlippagePercent)) > 0) {
+                    log.warn("⚠️ Post-fill slippage too high: {}% — closing position immediately!", slippagePct);
                     telegramService.sendMessage(
-                            "⚠️ [LIVE] High Slippage Detected",
+                            "⚠️ [LIVE] Order Closed — Post-fill Slippage Too High",
                             String.format(
                                     "Requested: $%.4f\n" +
                                             "Actual:    $%.4f\n" +
-                                            "Slippage:  %.2f%%\n\n" +
-                                            "Position will still open with actual entry price.",
+                                            "Slippage:  %.2f%% (max %.2f%%)\n\n" +
+                                            "Order DIBATALKAN — langsung close untuk hindari kerugian lebih besar.\n" +
+                                            "⏰ %s WIB",
                                     currentPrice.doubleValue(),
                                     actualEntry.doubleValue(),
-                                    slippagePct.doubleValue()));
+                                    slippagePct.doubleValue(),
+                                    maxSlippagePercent,
+                                    formatTime()));
+
+                    // ✅ Langsung sell market untuk close posisi yang baru dibuka
+                    try {
+                        binanceSellService.placeMarketSellOrder(
+                                PostSellRequest.builder()
+                                        .base(baseCurrency)
+                                        .quote(quoteCurrency)
+                                        .amount(orderResult.getFilledAmount())
+                                        .build());
+                        log.info("✅ Post-fill close executed successfully");
+                    } catch (Exception sellEx) {
+                        log.error("❌ Cannot close post-fill position: {}", sellEx.getMessage());
+                        telegramService.sendMessage(
+                                "🚨 CRITICAL — Manual Action Required!",
+                                "Gagal close post-fill slippage!\n" +
+                                        "CLOSE MANUAL di Binance sekarang!\n\n" +
+                                        "Symbol: " + baseCurrency + quoteCurrency + "\n" +
+                                        "Amount: " + orderResult.getFilledAmount() + " BNB\n" +
+                                        "⏰ " + formatTime() + " WIB");
+                    }
+                    return; // Jangan buka posisi
                 }
             } else {
                 log.warn("⚠️ No filledAmount in order result, using currentPrice as proxy");
