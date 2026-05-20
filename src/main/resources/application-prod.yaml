@@ -93,6 +93,7 @@ trading:
     max-position-percent: 90.0  # max 90% balance per posisi
     cooldown-minutes: 30        # cooldown 30 menit setelah close
     trailing-atr-multiplier: 1.5
+    max-slippage-percent: 0.3
 
   websocket:
     base-url: wss://stream.binance.vision/ws  # ✅ aktif di VPS

@@ -3,7 +3,6 @@ package com.bot.testnet.crypto.service.trading;
 import com.bot.testnet.crypto.model.LivePosition;
 import com.bot.testnet.crypto.model.dto.Signal;
 import com.bot.testnet.crypto.model.dto.StrategyType;
-import com.bot.testnet.crypto.model.request.GetBalanceCurrencyRequest;
 import com.bot.testnet.crypto.model.request.GetCurrentPriceRequest;
 import com.bot.testnet.crypto.model.request.PostBuyRequest;
 import com.bot.testnet.crypto.model.request.PostSellRequest;
@@ -54,6 +53,9 @@ public class OrderExecutorService {
 
     @Value("${trading.pair.base:BNB}")
     private String baseCurrency;
+
+    @Value("${trading.risk.max-slippage-percent:0.3}")
+    private double maxSlippagePercent;
 
     @Value("${trading.pair.quote:USDT}")
     private String quoteCurrency;
@@ -259,7 +261,7 @@ public class OrderExecutorService {
                             .multiply(BigDecimal.valueOf(100))
                             .abs();
 
-                    BigDecimal maxSlippagePct = new BigDecimal("0.5");
+                    BigDecimal maxSlippagePct = BigDecimal.valueOf(maxSlippagePercent);
 
                     if (slippagePct.compareTo(maxSlippagePct) > 0) {
                         log.warn("⚠️ Slippage too high: signal=${} → real-time=${} ({}%)",
