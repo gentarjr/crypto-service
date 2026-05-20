@@ -5,6 +5,7 @@ import com.bot.testnet.crypto.model.dto.SignalAction;
 import com.bot.testnet.crypto.model.dto.SignalFilter;
 import com.bot.testnet.crypto.model.dto.StrategyType;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
+import com.bot.testnet.crypto.service.indicator.SentimentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ import java.util.List;
 @Log4j2
 public class BbSignalService implements SignalService {
     private final BalanceService balanceService;
+    private final SentimentService sentimentService;
 
     @Value("${trading.indicators.adx-ranging-threshold:20}")
     private double adxRangingThreshold;
@@ -224,6 +226,46 @@ public class BbSignalService implements SignalService {
             score += 3;
             filters.add(SignalFilter.pass("VOLATILITY",
                     String.format("+3pts | ATR %s (elevated)", volZone)));
+        }
+
+        // S7: Social Sentiment — REVERSED LOGIC untuk BB
+        // BB = mean reversion, suka market FEARFUL (oversold bounce)
+        if (sentimentService != null && sentimentService.isEnabled()) {
+
+            // Hard block: market terlalu greedy untuk BB reversal
+            if (sentimentService.isMarketTooGreedyForBb()) {
+                filters.add(SignalFilter.fail("SENTIMENT",
+                        String.format("+0pts | Extreme greed (%s, score: %d) — bad BB entry",
+                                sentimentService.getSentimentLabel(),
+                                sentimentService.getSentimentScore())));
+                return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                        "Market too greedy — no reversal expected", filters);
+            }
+
+            int sentimentBonus = sentimentService.getSentimentBonusForBb();
+            int sentimentScore = sentimentService.getSentimentScore();
+            String sentimentLabel = sentimentService.getSentimentLabel();
+            String trend = sentimentService.getTrend();
+            boolean spike = sentimentService.isSocialVolumeSpike();
+            double spikeChg = sentimentService.getSocialVolumeChangePercent();
+
+            score += sentimentBonus;
+
+            String reason = String.format(
+                    "%s%dpts | %s (score: %d, F&G: %d, trend: %s%s)",
+                    sentimentBonus >= 0 ? "+" : "",
+                    sentimentBonus,
+                    sentimentLabel,
+                    sentimentScore,
+                    sentimentService.getFearGreedScore(),
+                    trend,
+                    spike ? String.format(", 🔥spike+%.0f%%", spikeChg) : "");
+
+            if (sentimentBonus >= 0) {
+                filters.add(SignalFilter.pass("SENTIMENT", reason + (sentimentBonus > 0 ? " ✅" : "")));
+            } else {
+                filters.add(SignalFilter.fail("SENTIMENT", reason));
+            }
         }
 
         // ═══════════════════════════════════════

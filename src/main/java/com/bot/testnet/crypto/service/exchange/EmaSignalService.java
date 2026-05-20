@@ -6,6 +6,7 @@ import com.bot.testnet.crypto.model.dto.SignalFilter;
 import com.bot.testnet.crypto.model.dto.StrategyType;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.service.indicator.MultiTimeframeService;
+import com.bot.testnet.crypto.service.indicator.SentimentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +28,7 @@ public class EmaSignalService implements SignalService {
     private final MultiTimeframeService multiTimeframeService;
     private final CandleService candleService;
     private final BalanceService balanceService;
+    private final SentimentService sentimentService;
 
     // ─── Config ───────────────────────────────────────
     @Value("${trading.indicators.adx-trending-threshold:25}")
@@ -224,6 +226,45 @@ public class EmaSignalService implements SignalService {
             } else {
                 filters.add(SignalFilter.fail("MTA_1H",
                         String.format("+0pts | 1h BEARISH (below EMA50 $%.4f)", ema50Val)));
+            }
+        }
+
+        // S7: Social Sentiment (LunarCrush + Fear&Greed)
+        if (sentimentService != null && sentimentService.isEnabled()) {
+
+            // Hard block: market terlalu bearish untuk EMA trend following
+            if (sentimentService.isMarketTooFearfulForEma()) {
+                filters.add(SignalFilter.fail("SENTIMENT",
+                        String.format("+0pts | Very bearish sentiment (%s, score: %d) — skip EMA",
+                                sentimentService.getSentimentLabel(),
+                                sentimentService.getSentimentScore())));
+                return Signal.hold(StrategyType.EMA_CROSSOVER,
+                        "Market too fearful for trend following", filters);
+            }
+
+            int sentimentBonus = sentimentService.getSentimentBonusForEma();
+            int sentimentScore = sentimentService.getSentimentScore();
+            String sentimentLabel = sentimentService.getSentimentLabel();
+            String trend = sentimentService.getTrend();
+            boolean spike = sentimentService.isSocialVolumeSpike();
+            double spikeChg = sentimentService.getSocialVolumeChangePercent();
+
+            score += sentimentBonus;
+
+            String reason = String.format(
+                    "%s%dpts | %s (score: %d, F&G: %d, trend: %s%s)",
+                    sentimentBonus >= 0 ? "+" : "",
+                    sentimentBonus,
+                    sentimentLabel,
+                    sentimentScore,
+                    sentimentService.getFearGreedScore(),
+                    trend,
+                    spike ? String.format(", 🔥spike+%.0f%%", spikeChg) : "");
+
+            if (sentimentBonus >= 0) {
+                filters.add(SignalFilter.pass("SENTIMENT", reason + (sentimentBonus > 0 ? " ✅" : "")));
+            } else {
+                filters.add(SignalFilter.fail("SENTIMENT", reason));
             }
         }
 

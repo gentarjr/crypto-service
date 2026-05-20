@@ -33,6 +33,8 @@ exchange:
 #  TRADING CONFIG
 # ═══════════════════════════════════════════════════════════
 trading:
+  paper:
+    enabled: false
   enabled: true
   pair:
     base: BNB
@@ -94,6 +96,13 @@ trading:
     cooldown-minutes: 30        # cooldown 30 menit setelah close
     trailing-atr-multiplier: 1.5
     max-slippage-percent: 0.3
+
+  sentiment:
+    enabled: true
+    lunarcrush-api-key: ${LUNARCRUSH_API_KEY}   # ← dari .env
+    topic: bnb                                    # ← topik BNB
+    score-weight: 15
+    cache-minutes: 30                         # ← update tiap jam
 
   websocket:
     base-url: wss://stream.binance.vision/ws  # ✅ aktif di VPS

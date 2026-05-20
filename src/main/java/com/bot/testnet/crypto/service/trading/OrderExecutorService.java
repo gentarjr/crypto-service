@@ -198,6 +198,22 @@ public class OrderExecutorService {
         return dailyHalted;
     }
 
+    // ✅ TAMBAH 3 GETTER INI:
+    public int getClosedCount() {
+        return closedPositions.size();
+    }
+
+    public BigDecimal getDailyPnl() {
+        return dailyPnl;
+    }
+
+    public int getConsecutiveLosses() {
+        return consecutiveLosses;
+    }
+
+    // ═══════════════════════════════════════════════════
+    // Private: Signal Execution
+
     // ═══════════════════════════════════════════════════
     // Private: Signal Execution
     // ═══════════════════════════════════════════════════
@@ -285,7 +301,33 @@ public class OrderExecutorService {
                     currentPrice = realTimePrice;
                     log.info("✅ Slippage ok: {}% (using real-time price ${})",
                             slippagePct, realTimePrice);
+                    BigDecimal originalEntry = signal.getPrice();
+                    BigDecimal originalSL = signal.getStopLoss();
+                    BigDecimal originalTP = signal.getTakeProfit();
 
+                    if (originalSL != null && originalEntry != null
+                            && originalEntry.compareTo(BigDecimal.ZERO) > 0) {
+
+                        // Hitung jarak SL dan TP dari signal original
+                        BigDecimal slDistance = originalEntry.subtract(originalSL).abs();
+                        BigDecimal tpDistance = originalTP != null
+                                ? originalTP.subtract(originalEntry).abs()
+                                : BigDecimal.ZERO;
+
+                        // Apply jarak yang sama dari actual entry
+                        BigDecimal adjustedSL = realTimePrice.subtract(slDistance);
+                        BigDecimal adjustedTP = tpDistance.compareTo(BigDecimal.ZERO) > 0
+                                ? realTimePrice.add(tpDistance)
+                                : null;
+
+                        signal.setStopLoss(adjustedSL);
+                        if (adjustedTP != null) signal.setTakeProfit(adjustedTP);
+
+                        log.info("📐 SL/TP adjusted: original entry ${} → actual ${} | SL: ${} → ${} | TP: ${} → ${}",
+                                originalEntry, realTimePrice,
+                                originalSL, adjustedSL,
+                                originalTP, adjustedTP);
+                    }
                 } catch (Exception e) {
                     log.warn("⚠️ Cannot fetch real-time price, using snapshot price: {}",
                             e.getMessage());

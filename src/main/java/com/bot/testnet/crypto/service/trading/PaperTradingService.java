@@ -52,6 +52,9 @@ public class PaperTradingService {
     @Value("${trading.risk.cooldown-minutes:30}")
     private int cooldownMinutes;
 
+    @Value("${trading.paper.enabled:true}")
+    private boolean paperEnabled;
+
     // ═══════════════════════════════════════════════════
     // In-Memory State
     // ═══════════════════════════════════════════════════
@@ -113,6 +116,11 @@ public class PaperTradingService {
      * @param currentPrice harga close candle terakhir
      */
     public void onNewCandle(Signal signal, BigDecimal currentPrice) {
+        if (!paperEnabled) {
+            log.debug("Paper trading disabled, skip");
+            return;
+        }
+
         ensureInitialized();
 
         // Monitor posisi dari candle close (fallback karena WebSocket disabled)
