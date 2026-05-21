@@ -55,6 +55,9 @@ public class BbSignalService implements SignalService {
     @Value("${trading.risk.max-position-percent:90.0}")
     private double maxPositionPercent;
 
+    @Value("${trading.strategy.bb.tp-atr-multiplier:1.0}")
+    private double tpAtrMultiplier;
+
     @Override
     public Signal evaluate(GetIndicatorResponse snapshot) {
         List<SignalFilter> filters = new ArrayList<>();
@@ -299,7 +302,8 @@ public class BbSignalService implements SignalService {
                 atr.multiply(BigDecimal.valueOf(slAtrMultiplier)));
 
         // TP = Middle BB
-        BigDecimal takeProfit = bbMiddle;
+        BigDecimal takeProfit = bbMiddle.add(
+                atr.multiply(BigDecimal.valueOf(tpAtrMultiplier)));
 
         BigDecimal slDistance = price.subtract(stopLoss);
         BigDecimal slDistancePct = slDistance
