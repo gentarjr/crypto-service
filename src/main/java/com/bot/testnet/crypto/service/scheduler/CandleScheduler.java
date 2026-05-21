@@ -83,8 +83,7 @@ public class CandleScheduler {
                                     "📋 Config:\n" +
                                     "   Pair: <b>BNB/USDT</b>\n" +
                                     "   Timeframe: <b>m15</b>\n" +
-                                    "   Live Trading: <b>%s</b>\n" +
-                                    "   Paper Trading: <b>Active</b>\n\n" +
+                                    "   Live Trading: <b>%s</b>\n\n" +
                                     "💰 USDT Balance: <b>$%.2f</b>\n" +
                                     "🪙 BNB Balance:  <b>%.4f BNB</b>%s\n\n" +
                                     "⏰ %s WIB",

@@ -16,6 +16,7 @@ import org.knowm.xchange.dto.trade.MarketOrder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -37,7 +38,9 @@ public class BinanceSellService {
         String timestamp = ConvertUtils.convertTimestampToString(now, Constants.DATEFORMAT_YYYYMMDDT_HHMMSSSSSZ);
 
         CurrencyPair pair = new CurrencyPair(request.getBase(), request.getQuote());
-        MarketOrder order = new MarketOrder(Order.OrderType.ASK, request.getAmount(), pair);
+        BigDecimal normalizedAmount = request.getAmount()
+                .setScale(1, RoundingMode.DOWN);
+        MarketOrder order = new MarketOrder(Order.OrderType.ASK, normalizedAmount, pair);
 
         log.info("🛒 Placing SELL order: {} {} @ market price", request.getAmount(), request.getBase());
 
@@ -71,7 +74,7 @@ public class BinanceSellService {
         }
 
         // 3. Tunggu Binance update balance
-        Thread.sleep(1000);
+        Thread.sleep(3000);
 
         // 4. Snapshot balance SETELAH order
         BigDecimal balanceAfter;
