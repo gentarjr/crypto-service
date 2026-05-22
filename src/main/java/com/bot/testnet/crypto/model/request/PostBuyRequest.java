@@ -11,4 +11,5 @@ public class PostBuyRequest {
     private String base;
     private String quote;
     private BigDecimal amount;
+    private BigDecimal limitPrice;
 }

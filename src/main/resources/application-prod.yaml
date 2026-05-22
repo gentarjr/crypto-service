@@ -24,7 +24,7 @@ exchange:
   binance:
     api-key: ${BINANCE_API_KEY}
     secret-key: ${BINANCE_SECRET_KEY}
-    testnet: ${BINANCE_TESTNET:false}
+    testnet: ${BINANCE_TESTNET:true}
     base-url-api: https://api.binance.com/api
     websoceket-url: wss://stream.binance.com
     testnet-web: https://api.binance.com
@@ -96,7 +96,7 @@ trading:
     max-position-percent: 90.0  # max 90% balance per posisi
     cooldown-minutes: 30        # cooldown 30 menit setelah close
     trailing-atr-multiplier: 1.5
-    max-slippage-percent: 0.3
+    max-slippage-percent: 0.8
 
   sentiment:
     enabled: true

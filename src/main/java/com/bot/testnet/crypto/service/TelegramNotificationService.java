@@ -66,7 +66,30 @@ public class TelegramNotificationService {
     private String formatMessage(String title, String message) {
         return "<b>" + escapeHtml(title) + "</b>\n" +
                 "━━━━━━━━━━━━━━━━━━\n\n" +
-                message;
+                safeMessage(message);
+    }
+
+    /**
+     * Safe message: escape semua < dan > KECUALI tag HTML yang kita tulis sendiri
+     * Caranya: escape dulu semua, lalu kembalikan tag yang valid
+     */
+    private String safeMessage(String message) {
+        if (message == null) return "";
+
+        // Step 1: Escape semua & < >
+        String escaped = message
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+
+        // Step 2: Kembalikan tag HTML valid yang kita pakai
+        return escaped
+                .replace("&lt;b&gt;", "<b>")
+                .replace("&lt;/b&gt;", "</b>")
+                .replace("&lt;i&gt;", "<i>")
+                .replace("&lt;/i&gt;", "</i>")
+                .replace("&lt;code&gt;", "<code>")
+                .replace("&lt;/code&gt;", "</code>");
     }
 
     /**

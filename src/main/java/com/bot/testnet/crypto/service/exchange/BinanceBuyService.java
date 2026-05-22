@@ -12,10 +12,12 @@ import org.apache.commons.lang3.StringUtils;
 import org.knowm.xchange.Exchange;
 import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dto.Order;
+import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.dto.trade.MarketOrder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -38,7 +40,6 @@ public class BinanceBuyService {
         String timestamp = ConvertUtils.convertTimestampToString(now, Constants.DATEFORMAT_YYYYMMDDT_HHMMSSSSSZ);
 
         CurrencyPair pair = new CurrencyPair(request.getBase(), request.getQuote());
-        MarketOrder order = new MarketOrder(Order.OrderType.BID, request.getAmount(), pair);
 
         log.info("Placing BUY order: {} {} @ market price", request.getAmount(), request.getBase());
         BigDecimal balanceBefore;
@@ -57,15 +58,33 @@ public class BinanceBuyService {
                     .build();
         }
 
-        String orderId = StringUtils.EMPTY;
+        String orderId;
         String exceptionMessage = StringUtils.EMPTY;
-        try {
+        BigDecimal normalizedAmount = request.getAmount()
+                .setScale(1, RoundingMode.DOWN);
+        if (request.getLimitPrice() != null
+                && request.getLimitPrice().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal normalizeLimitPrice = request.getLimitPrice()
+                    .setScale(2, RoundingMode.DOWN);
+            LimitOrder limitOrder = new LimitOrder.Builder(Order.OrderType.BID, pair)
+                    .originalAmount(normalizedAmount)
+                    .limitPrice(normalizeLimitPrice)
+                    .build();
+
+            log.info("📋 Placing LIMIT BUY: {} BNB @ max ${}",
+                    normalizedAmount, normalizeLimitPrice);
+
+            try {
+                orderId = binanceExchange.getTradeService().placeLimitOrder(limitOrder);
+            } catch (Exception e) {
+                log.warn("⚠️ Limit order failed: {} — fallback to market", e.getMessage());
+                MarketOrder market = new MarketOrder(Order.OrderType.BID, normalizedAmount, pair);
+                orderId = binanceExchange.getTradeService().placeMarketOrder(market);
+            }
+        } else {
+            MarketOrder order = new MarketOrder(Order.OrderType.BID, normalizedAmount, pair);
+            log.info("📋 Placing MARKET BUY: {} BNB", normalizedAmount);
             orderId = binanceExchange.getTradeService().placeMarketOrder(order);
-            log.info("✅ Order ID returned: {}", orderId);
-        } catch (Exception e) {
-            exceptionMessage = e.getMessage();
-            log.warn("⚠️  Place order threw exception: {}", exceptionMessage);
-            log.warn("⚠️  This might be a Binance Testnet quirk - verifying via balance check...");
         }
 
         Thread.sleep(1000);

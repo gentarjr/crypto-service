@@ -334,9 +334,15 @@ public class OrderExecutorService {
                 }
             }
 
-            // 3. Place market order
+            BigDecimal limitPrice = currentPrice.multiply(
+                    BigDecimal.ONE.add(
+                            BigDecimal.valueOf(maxSlippagePercent / 100)))
+                    .setScale(2, RoundingMode.DOWN);
+            log.info("📋 Limit price: ${} ({}% above ${})",
+                    limitPrice, maxSlippagePercent, currentPrice);
+
             var orderResult = binanceBuyService.placeMarketBuyOrder(
-                    buildBuyRequest(quantity));
+                    buildBuyRequest(quantity, limitPrice));
 
             // 4. Verify order filled
             if (!"FILLED".equals(orderResult.getStatus())) {
@@ -348,61 +354,90 @@ public class OrderExecutorService {
                 return;
             }
 
-            BigDecimal actualEntry = currentPrice;  // default fallback
+            // ─── Actual Entry Price ───────────────────────────────
+            // Default: pakai currentPrice (realTimePrice yang sudah di-update di CHECK 1)
+            // Ini paling akurat karena diambil tepat sebelum order dikirim
+            BigDecimal actualEntry = currentPrice;
 
             if (orderResult.getFilledAmount() != null
-                    && orderResult.getFilledAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    && orderResult.getFilledAmount().compareTo(BigDecimal.ZERO) > 0
+                    && orderResult.getBalanceBefore() != null
+                    && orderResult.getBalanceAfter() != null) {
 
-                actualEntry = positionSize.divide(
-                        orderResult.getFilledAmount(),
-                        6,
-                        RoundingMode.HALF_UP);
+                BigDecimal usdtSpent = orderResult.getBalanceBefore()
+                        .subtract(orderResult.getBalanceAfter());
 
-                // Setelah order fill, cek actual slippage
-                BigDecimal slippagePct = actualEntry.subtract(currentPrice)
-                        .divide(currentPrice, 6, RoundingMode.HALF_UP)
-                        .multiply(BigDecimal.valueOf(100));
+                if (usdtSpent.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal calculatedEntry = usdtSpent.divide(
+                            orderResult.getFilledAmount(), 6, RoundingMode.HALF_UP);
 
-// ✅ Pakai @Value threshold
-                if (slippagePct.abs().compareTo(BigDecimal.valueOf(maxSlippagePercent)) > 0) {
-                    log.warn("⚠️ Post-fill slippage too high: {}% — closing position immediately!", slippagePct);
-                    telegramService.sendMessage(
-                            "⚠️ [LIVE] Order Closed — Post-fill Slippage Too High",
-                            String.format(
-                                    "Requested: $%.4f\n" +
-                                            "Actual:    $%.4f\n" +
-                                            "Slippage:  %.2f%% (max %.2f%%)\n\n" +
-                                            "Order DIBATALKAN — langsung close untuk hindari kerugian lebih besar.\n" +
-                                            "⏰ %s WIB",
-                                    currentPrice.doubleValue(),
-                                    actualEntry.doubleValue(),
-                                    slippagePct.doubleValue(),
-                                    maxSlippagePercent,
-                                    formatTime()));
+                    // Sanity check: kalau calculatedEntry jauh dari realtime (> 1%)
+                    // berarti ada fee distortion → tetap pakai realtime
+                    BigDecimal diffPct = calculatedEntry.subtract(currentPrice)
+                            .abs()
+                            .divide(currentPrice, 6, RoundingMode.HALF_UP)
+                            .multiply(BigDecimal.valueOf(100));
 
-                    // ✅ Langsung sell market untuk close posisi yang baru dibuka
-                    try {
-                        binanceSellService.placeMarketSellOrder(
-                                PostSellRequest.builder()
-                                        .base(baseCurrency)
-                                        .quote(quoteCurrency)
-                                        .amount(orderResult.getFilledAmount())
-                                        .build());
-                        log.info("✅ Post-fill close executed successfully");
-                    } catch (Exception sellEx) {
-                        log.error("❌ Cannot close post-fill position: {}", sellEx.getMessage());
-                        telegramService.sendMessage(
-                                "🚨 CRITICAL — Manual Action Required!",
-                                "Gagal close post-fill slippage!\n" +
-                                        "CLOSE MANUAL di Binance sekarang!\n\n" +
-                                        "Symbol: " + baseCurrency + quoteCurrency + "\n" +
-                                        "Amount: " + orderResult.getFilledAmount() + " BNB\n" +
-                                        "⏰ " + formatTime() + " WIB");
+                    if (diffPct.compareTo(new BigDecimal("1.0")) < 0) {
+                        actualEntry = calculatedEntry;
+                        log.info("📌 Actual entry (balance diff): ${} (diff: {}%)",
+                                actualEntry, diffPct);
+                    } else {
+                        // Fee distortion detected → pakai realtime
+                        log.warn("⚠️ Balance diff entry ${} too far from realtime ${} ({}%)" +
+                                " → using realtime", calculatedEntry, currentPrice, diffPct);
                     }
-                    return; // Jangan buka posisi
                 }
             } else {
-                log.warn("⚠️ No filledAmount in order result, using currentPrice as proxy");
+                log.info("📌 Actual entry (realtime): ${}", actualEntry);
+            }
+
+            // ─── Post-fill Slippage Check ─────────────────────────
+            // Bandingkan actualEntry vs currentPrice (realTimePrice)
+            // Kalau terlalu jauh → sell balik, jangan buka posisi
+            BigDecimal postFillSlippage = actualEntry.subtract(currentPrice)
+                    .abs()
+                    .divide(currentPrice, 6, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100));
+
+            log.info("📊 Post-fill slippage: {}%", postFillSlippage);
+
+            if (postFillSlippage.compareTo(BigDecimal.valueOf(maxSlippagePercent)) > 0) {
+                log.warn("🚨 Post-fill slippage {}% > {}% — closing immediately!",
+                        postFillSlippage, maxSlippagePercent);
+                telegramService.sendMessage(
+                        "⚠️ [LIVE] Order Closed — Post-fill Slippage Too High",
+                        String.format(
+                                "Requested: $%.4f\n" +
+                                        "Actual:    $%.4f\n" +
+                                        "Slippage:  %.2f%% (max %.2f%%)\n\n" +
+                                        "Order DIBATALKAN — langsung close.\n" +
+                                        "⏰ %s WIB",
+                                currentPrice.doubleValue(),
+                                actualEntry.doubleValue(),
+                                postFillSlippage.doubleValue(),
+                                maxSlippagePercent,
+                                formatTime()));
+                try {
+                    BigDecimal sellAmt = orderResult.getFilledAmount() != null
+                            ? orderResult.getFilledAmount().setScale(1, RoundingMode.DOWN)
+                            : quantity.setScale(1, RoundingMode.DOWN);
+                    binanceSellService.placeMarketSellOrder(
+                            PostSellRequest.builder()
+                                    .base(baseCurrency)
+                                    .quote(quoteCurrency)
+                                    .amount(sellAmt)
+                                    .build());
+                    log.info("✅ Post-fill sell executed: {} BNB", sellAmt);
+                } catch (Exception sellEx) {
+                    log.error("❌ Post-fill sell failed: {}", sellEx.getMessage());
+                    telegramService.sendMessage(
+                            "🚨 CRITICAL — Close Manual!",
+                            "Gagal close post-fill!\n" +
+                                    "Close manual di Binance!\n" +
+                                    "⏰ " + formatTime() + " WIB");
+                }
+                return; // ← jangan buka posisi
             }
 
             positionLock.lock();
@@ -514,8 +549,27 @@ public class OrderExecutorService {
 
             try {
                 // Place SELL order
+                BigDecimal actualBnbBalance;
+                try {
+                    actualBnbBalance = balanceService.getAvailableBnb();
+                    if (actualBnbBalance == null || actualBnbBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                        actualBnbBalance = openPosition.getQuantity();
+                    }
+                } catch (Exception e) {
+                    log.warn("Cannot fetch BNB balance, using position qty: {}", e.getMessage());
+                    actualBnbBalance = openPosition.getQuantity();
+                }
+
+                BigDecimal sellAmount = actualBnbBalance.setScale(1, RoundingMode.DOWN);
+                log.info("💰 Selling {} BNB (position qty: {}, actual balance: {})",
+                        sellAmount, openPosition.getQuantity(), actualBnbBalance);
+
                 var sellResult = binanceSellService.placeMarketSellOrder(
-                        buildSellRequest(openPosition.getQuantity()));
+                        PostSellRequest.builder()
+                                .base(baseCurrency)
+                                .quote(quoteCurrency)
+                                .amount(sellAmount)
+                                .build());
 
                 if (!"FILLED".equals(sellResult.getStatus())) {
                     log.error("❌ [LIVE] SELL order failed: {}", sellResult.getStatus());
@@ -653,11 +707,12 @@ public class OrderExecutorService {
     // Private: Build Requests
     // ═══════════════════════════════════════════════════
 
-    private PostBuyRequest buildBuyRequest(BigDecimal quantity) {
+    private PostBuyRequest buildBuyRequest(BigDecimal quantity, BigDecimal limit) {
         return PostBuyRequest.builder()
                 .base(baseCurrency)
                 .quote(quoteCurrency)
                 .amount(quantity)
+                .limitPrice(limit)
                 .build();
     }
 
