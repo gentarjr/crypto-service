@@ -591,10 +591,11 @@ public class OrderExecutorService {
 
         openPosition.updateHighestPrice(realtimePrice);
 
-        log.debug("📡 [LIVE] Realtime monitor: price=${}, SL=${}, TP={}",
+        log.info("📡 [LIVE] RT monitor: price=${} SL=${} TP={}",
                 realtimePrice,
                 openPosition.getStopLoss(),
-                openPosition.getTakeProfit());
+                openPosition.getTakeProfit() != null
+                        ? "$" + openPosition.getTakeProfit() : "TRAIL");
 
         // Check SL
         if (openPosition.isHitStopLoss(realtimePrice)) {
@@ -678,16 +679,40 @@ public class OrderExecutorService {
 
                 // Calculate P&L
                 BigDecimal pnl = openPosition.calculateUnrealizedPnl(exitPrice);
-                boolean isWin = pnl.compareTo(BigDecimal.ZERO) > 0;
+
+                // ✅ Hitung fee Binance (0.075% per side pakai BNB)
+                BigDecimal feeRate   = new BigDecimal("0.00075");
+                BigDecimal buyFee    = openPosition.getPositionValue()
+                        .multiply(feeRate);
+                BigDecimal sellValue = exitPrice.multiply(openPosition.getQuantity());
+                BigDecimal sellFee   = sellValue.multiply(feeRate);
+                BigDecimal totalFee  = buyFee.add(sellFee);
+
+                // ✅ P&L setelah fee
+                BigDecimal pnlAfterFee = pnl.subtract(totalFee);
+
+                // ✅ P&L percent dari posisi
+                BigDecimal pnlPercent = openPosition.getPositionValue()
+                        .compareTo(BigDecimal.ZERO) > 0
+                        ? pnlAfterFee
+                        .divide(openPosition.getPositionValue(), 6,
+                                java.math.RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
+                        : BigDecimal.ZERO;
+
+                boolean isWin = pnlAfterFee.compareTo(BigDecimal.ZERO) > 0;
 
                 openPosition.setClosePrice(exitPrice);
-                openPosition.setRealizedPnl(pnl);
+                openPosition.setFee(totalFee);
+                openPosition.setRealizedPnl(pnlAfterFee);
+                openPosition.setPnlAfterFee(pnlAfterFee);
+                openPosition.setPnlPercent(pnlPercent);
                 openPosition.setCloseReason(reason);
                 openPosition.setCloseTime(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant());
                 openPosition.setStatus("CLOSED");
 
-                // Update stats
-                dailyPnl = dailyPnl.add(pnl);
+                // ─── Update stats ───────────────────────────────
+                dailyPnl = dailyPnl.add(pnlAfterFee);
                 if (isWin) {
                     consecutiveLosses = 0;
                 } else {
@@ -695,9 +720,12 @@ public class OrderExecutorService {
                 }
                 lastCloseTime = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
 
-                log.info("✅ [LIVE] Position CLOSED #{}: {} | P&L: ${}",
+                log.info("✅ [LIVE] Position CLOSED #{}: {} | gross=${} fee=${} net=${} ({}%)",
                         openPosition.getId(), reason,
-                        String.format("%.4f", pnl.doubleValue()));
+                        String.format("%.4f", pnl.doubleValue()),
+                        String.format("%.4f", totalFee.doubleValue()),
+                        String.format("%.4f", pnlAfterFee.doubleValue()),
+                        String.format("%.2f", pnlPercent.doubleValue()));
 
                 closedPositions.add(openPosition);
                 sendLivePositionClosedNotif(openPosition);
@@ -842,26 +870,43 @@ public class OrderExecutorService {
                         formatTime()));
     }
 
+    // SESUDAH:
     private void sendLivePositionClosedNotif(LivePosition position) {
         boolean isWin = position.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0;
-        String emoji = isWin ? "✅" : "❌";
+        String emoji  = isWin ? "✅" : "❌";
+
+        // Gross P&L = pnlAfterFee + fee
+        BigDecimal fee      = position.getFee() != null
+                ? position.getFee() : BigDecimal.ZERO;
+        BigDecimal grossPnl = position.getRealizedPnl().add(fee);
 
         telegramService.sendMessage(
                 emoji + " [LIVE] " + position.getCloseReason(),
                 String.format(
                         "🆔 #%s | %s\n\n" +
-                                "💰 Entry: $%.4f\n" +
-                                "💰 Exit:  $%.4f\n" +
-                                "%s P&L: <b>$%.4f</b>\n\n" +
-                                "📊 Today: Daily P&L $%.4f\n" +
-                                "🔁 Consecutive losses: %d\n\n" +
+                                "💰 Entry:  <b>$%.4f</b>\n" +
+                                "💰 Exit:   <b>$%.4f</b>\n\n" +
+                                "%s Gross P&L: <b>%s$%.4f</b>\n" +
+                                "💸 Fee:      <b>-$%.4f</b>\n" +
+                                "📊 Net P&L:  <b>%s$%.4f (%s%.2f%%)</b>\n\n" +
+                                "📈 Today P&L: <b>%s$%.4f</b>\n" +
+                                "🔁 Consec losses: <b>%d</b>\n\n" +
                                 "⏰ %s WIB",
                         position.getId(),
                         position.getStrategy(),
                         position.getEntryPrice().doubleValue(),
                         position.getClosePrice().doubleValue(),
                         isWin ? "📈" : "📉",
+                        grossPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
+                        grossPnl.doubleValue(),
+                        fee.doubleValue(),
+                        position.getRealizedPnl().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
                         position.getRealizedPnl().doubleValue(),
+                        position.getPnlPercent() != null
+                                && position.getPnlPercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
+                        position.getPnlPercent() != null
+                                ? position.getPnlPercent().doubleValue() : 0.0,
+                        dailyPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
                         dailyPnl.doubleValue(),
                         consecutiveLosses,
                         formatTime()));

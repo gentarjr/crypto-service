@@ -46,6 +46,8 @@ public class LivePosition implements TrailablePosition {
     // Close details
     private BigDecimal closePrice;
     private BigDecimal realizedPnl;
+    private BigDecimal pnlAfterFee;    // ✅ TAMBAH
+    private BigDecimal pnlPercent;     // ✅ TAMBAH
     private String closeReason;
 
     // ─────────────────────────────────────────────

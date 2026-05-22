@@ -69,10 +69,27 @@ public class CandleScheduler {
 
             boolean possibleOrphanPosition = bnbBalance.compareTo(new BigDecimal("0.01")) > 0;
 
+            // ✅ Orphan position recovery
+            if (possibleOrphanPosition && orderExecutorService.getOpenPosition() == null) {
+                log.warn("⚠️ Detected {} BNB — possible orphan position!", bnbBalance);
+                telegramService.sendMessage(
+                        "⚠️ [LIVE] Orphan Position Detected!",
+                        String.format(
+                                "Ditemukan <b>%.4f BNB</b> saat startup.\n\n" +
+                                        "Kemungkinan ada posisi terbuka dari run sebelumnya.\n\n" +
+                                        "Bot TIDAK bisa track posisi ini secara otomatis.\n" +
+                                        "Silakan:\n" +
+                                        "1. Cek Binance manual\n" +
+                                        "2. Pasang SL manual jika perlu\n" +
+                                        "3. Atau close manual\n\n" +
+                                        "⏰ %s WIB",
+                                bnbBalance.doubleValue(),
+                                formatTime()));
+            }
+
             String warning = possibleOrphanPosition
-                    ? "\n\n🚨 <b>WARNING:</b> Detected " + bnbBalance + " BNB in account!\n" +
-                    "Possible orphan position from previous run!\n" +
-                    "Bot does NOT track this position — close manually jika perlu!\n"
+                    ? "\n\n🚨 <b>WARNING:</b> Detected "
+                    + bnbBalance + " BNB!\nCheck Binance manual!\n"
                     : "";
 
             telegramService.sendMessage(
