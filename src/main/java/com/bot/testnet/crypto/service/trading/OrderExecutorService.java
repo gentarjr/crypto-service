@@ -4,14 +4,13 @@ import com.bot.testnet.crypto.model.LivePosition;
 import com.bot.testnet.crypto.model.dto.Signal;
 import com.bot.testnet.crypto.model.dto.StrategyType;
 import com.bot.testnet.crypto.model.request.GetCurrentPriceRequest;
+import com.bot.testnet.crypto.model.request.OcoOrderRequest;
 import com.bot.testnet.crypto.model.request.PostBuyRequest;
 import com.bot.testnet.crypto.model.request.PostSellRequest;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
+import com.bot.testnet.crypto.model.response.OcoOrderResponse;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
-import com.bot.testnet.crypto.service.exchange.BalanceService;
-import com.bot.testnet.crypto.service.exchange.BinanceBuyService;
-import com.bot.testnet.crypto.service.exchange.BinanceSellService;
-import com.bot.testnet.crypto.service.exchange.BinanceService;
+import com.bot.testnet.crypto.service.exchange.*;
 import com.bot.testnet.crypto.service.risk.TrailingStopHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -47,6 +46,7 @@ public class OrderExecutorService {
     private final TelegramNotificationService telegramService;
     private final TrailingStopHelper trailingStopHelper;
     private final BalanceService balanceService;
+    private final BinanceOcoService binanceOcoService;
 
     @Value("${trading.live.enabled:false}")
     private boolean liveEnabled;
@@ -467,6 +467,48 @@ public class OrderExecutorService {
                         signal.getTakeProfit() != null ? "$" + signal.getTakeProfit() : "TRAILING");
 
                 sendLivePositionOpenedNotif(openPosition);
+                if (signal.getTakeProfit() != null && signal.getStopLoss() != null) {
+                    try {
+                        OcoOrderResponse ocoResult = binanceOcoService.placeOcoOrder(
+                                OcoOrderRequest.builder()
+                                        .base(baseCurrency)
+                                        .quote(quoteCurrency)
+                                        .quantity(openPosition.getQuantity().setScale(1, RoundingMode.DOWN))
+                                        .takeProfitPrice(signal.getTakeProfit().setScale(2, RoundingMode.HALF_UP))
+                                        .stopLossPrice(signal.getStopLoss().setScale(2, RoundingMode.DOWN))
+                                        .build());
+
+                        if ("SUCCESS".equals(ocoResult.getStatus())) {
+                            openPosition.setOcoOrderListId(ocoResult.getOrderListId());
+                            log.info("✅ OCO placed: {}", ocoResult.getOrderListId());
+                            telegramService.sendMessage(
+                                    "🛡️ [LIVE] OCO Protection Active",
+                                    String.format(
+                                            "SL dan TP terpasang di Binance.\n" +
+                                                    "Aman meski bot restart!\n\n" +
+                                                    "🎯 TP: <b>$%.2f</b>\n" +
+                                                    "🛑 SL: <b>$%.2f</b>\n" +
+                                                    "⏰ %s WIB",
+                                            signal.getTakeProfit().doubleValue(),
+                                            signal.getStopLoss().doubleValue(),
+                                            formatTime()));
+                        } else if ("SKIPPED".equals(ocoResult.getStatus())) {
+                            log.info("ℹ️ OCO skipped (testnet mode)");
+                        } else {
+                            log.warn("⚠️ OCO failed: {}", ocoResult.getErrorMessage());
+                            telegramService.sendMessage(
+                                    "⚠️ [LIVE] OCO Gagal — Monitor Manual!",
+                                    String.format(
+                                            "OCO tidak berhasil!\n" +
+                                                    "SL/TP hanya di memory bot.\n\n" +
+                                                    "Jangan restart bot saat ada posisi!\n" +
+                                                    "⏰ %s WIB",
+                                            formatTime()));
+                        }
+                    } catch (Exception e) {
+                        log.error("❌ OCO error: {}", e.getMessage());
+                    }
+                }
             } finally {
                 positionLock.unlock();
             }
@@ -539,6 +581,47 @@ public class OrderExecutorService {
         }
     }
 
+    /**
+     * Monitor posisi dengan harga real-time
+     * Dipanggil tiap 1 menit dari CandleScheduler
+     * Supaya SL/TP tidak miss kalau harga spike dalam 1 candle
+     */
+    public void monitorPositionRealtime(BigDecimal realtimePrice) {
+        if (!liveEnabled || openPosition == null) return;
+
+        openPosition.updateHighestPrice(realtimePrice);
+
+        log.debug("📡 [LIVE] Realtime monitor: price=${}, SL=${}, TP={}",
+                realtimePrice,
+                openPosition.getStopLoss(),
+                openPosition.getTakeProfit());
+
+        // Check SL
+        if (openPosition.isHitStopLoss(realtimePrice)) {
+            String reason = openPosition.isTrailingActive()
+                    ? "TRAILING_STOP" : "STOP_LOSS";
+            log.warn("🛑 [LIVE] {} HIT (realtime): ${} <= ${}",
+                    reason, realtimePrice, openPosition.getStopLoss());
+            closeLivePosition(realtimePrice, reason);
+            return;
+        }
+
+        // Check TP
+        if (openPosition.isHitTakeProfit(realtimePrice)) {
+            log.info("🎯 [LIVE] TP HIT (realtime): ${} >= ${}",
+                    realtimePrice, openPosition.getTakeProfit());
+            closeLivePosition(realtimePrice, "TAKE_PROFIT");
+            return;
+        }
+
+        // Update trailing SL (EMA strategy only)
+        if (lastSnapshot != null
+                && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
+            trailingStopHelper.update(
+                    openPosition, realtimePrice, lastSnapshot.getAtr(), "LIVE");
+        }
+    }
+
     private void closeLivePosition(BigDecimal exitPrice, String reason) {
         positionLock.lock();
         try {
@@ -546,6 +629,13 @@ public class OrderExecutorService {
 
             log.info("🔄 [LIVE] Closing position #{} ({})...",
                     openPosition.getId(), reason);
+
+            if (openPosition.getOcoOrderListId() != null) {
+                log.info("🗑️ Cancelling OCO before close...");
+                binanceOcoService.cancelOcoOrder(
+                        baseCurrency + quoteCurrency,
+                        openPosition.getOcoOrderListId());
+            }
 
             try {
                 // Place SELL order

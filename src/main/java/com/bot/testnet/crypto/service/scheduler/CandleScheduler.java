@@ -2,13 +2,11 @@ package com.bot.testnet.crypto.service.scheduler;
 
 import com.bot.testnet.crypto.model.dto.*;
 import com.bot.testnet.crypto.model.request.GetCandleRequest;
+import com.bot.testnet.crypto.model.request.GetCurrentPriceRequest;
 import com.bot.testnet.crypto.model.response.GetCandleResponse;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
-import com.bot.testnet.crypto.service.exchange.AdaptiveSignalService;
-import com.bot.testnet.crypto.service.exchange.BalanceService;
-import com.bot.testnet.crypto.service.exchange.CandleCache;
-import com.bot.testnet.crypto.service.exchange.CandleService;
+import com.bot.testnet.crypto.service.exchange.*;
 import com.bot.testnet.crypto.service.indicator.IndicatorService;
 import com.bot.testnet.crypto.service.risk.TradingHoursService;
 import com.bot.testnet.crypto.service.trading.OrderExecutorService;
@@ -42,6 +40,7 @@ public class CandleScheduler {
     private final TradingHoursService tradingHoursService;
     private final OrderExecutorService orderExecutorService;
     private final BalanceService balanceService;
+    private final BinanceService binanceService;
 
     private String lastRegime = StringUtils.EMPTY;
     private int candleFetchErrorCount = 0;
@@ -152,6 +151,20 @@ public class CandleScheduler {
                 if (result.shouldTriggerIndicators()) {
                     hasNewClosedCandle = true;
                     log.debug("Should trigger indicators because: {}", result);
+                }
+            }
+
+            if (orderExecutorService.getOpenPosition() != null) {
+                try {
+                    BigDecimal realtimePrice = binanceService.getCurrentPrice(
+                            GetCurrentPriceRequest.builder()
+                                    .base(baseCurrency)
+                                    .quote(quoteCurrency)
+                                    .build()).getPrice();
+                    log.debug("📡 Realtime price: ${}", realtimePrice);
+                    orderExecutorService.monitorPositionRealtime(realtimePrice);
+                } catch (Exception e) {
+                    log.warn("⚠️ Cannot fetch realtime price: {}", e.getMessage());
                 }
             }
 
