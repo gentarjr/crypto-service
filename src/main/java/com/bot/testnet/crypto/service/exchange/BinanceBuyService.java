@@ -14,6 +14,7 @@ import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dto.Order;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.dto.trade.MarketOrder;
+import org.knowm.xchange.service.trade.params.DefaultCancelAllOrdersByInstrument;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -76,27 +77,52 @@ public class BinanceBuyService {
 
             try {
                 orderId = binanceExchange.getTradeService().placeLimitOrder(limitOrder);
-                if (orderId == null || orderId.isBlank()) {
-                    // ✅ Cek balance — mungkin order sudah fill meski null ID
+                log.info("✅ Limit order placed: {}", orderId);
+            } catch (Exception e) {
+                log.warn("⚠️ Limit order exception: {}", e.getMessage());
+                orderId = null;
+            }
+
+            if (orderId == null || orderId.isBlank()) {
+                log.warn("⚠️ Limit order null ID — waiting 2s then checking balance...");
+
+                try { Thread.sleep(2000); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+
+                try {
                     BigDecimal balanceCheck = binanceService.getBalance(
                             GetBalanceCurrencyRequest.builder()
                                     .currency(request.getBase())
                                     .build()).getTotal();
                     BigDecimal diff = balanceCheck.subtract(balanceBefore);
+
                     if (diff.compareTo(BigDecimal.ZERO) > 0) {
-                        // Order fill! Pakai balance diff sebagai confirmation
-                        log.info("✅ Limit order filled (null ID but balance changed): diff={}", diff);
-                        orderId = "FILLED_NO_ID";
+                        // ✅ Sudah fill! Tidak perlu market order
+                        log.info("✅ Limit order filled (null ID but balance +{})", diff);
+                        orderId = "LIMIT_FILLED_NO_ID";
                     } else {
-                        log.warn("⚠️ Limit order returned null ID — fallback to market");
-                        throw new Exception("Null order ID");
+                        // ✅ Belum fill → cancel semua open orders dulu
+                        log.warn("⚠️ Not filled — cancelling open orders before fallback...");
+                        try {
+                            binanceExchange.getTradeService().cancelOrder(
+                                    new DefaultCancelAllOrdersByInstrument(pair));
+                            log.info("✅ Open orders cancelled");
+                            Thread.sleep(1000); // tunggu cancel diproses
+                        } catch (Exception cancelEx) {
+                            log.warn("Cannot cancel orders: {}", cancelEx.getMessage());
+                        }
+
+                        // ✅ Baru fallback market order
+                        log.info("📋 Fallback MARKET BUY: {} BNB", normalizedAmount);
+                        MarketOrder market = new MarketOrder(
+                                Order.OrderType.BID, normalizedAmount, pair);
+                        orderId = binanceExchange.getTradeService().placeMarketOrder(market);
                     }
+                } catch (Exception ex) {
+                    log.error("❌ Balance check / fallback failed: {}", ex.getMessage());
+                    throw ex;
                 }
-            } catch (Exception e) {
-                log.warn("⚠️ Limit order failed: {} — fallback to market", e.getMessage());
-                MarketOrder market = new MarketOrder(
-                        Order.OrderType.BID, normalizedAmount, pair);
-                orderId = binanceExchange.getTradeService().placeMarketOrder(market);
             }
         } else {
             MarketOrder order = new MarketOrder(Order.OrderType.BID, normalizedAmount, pair);
