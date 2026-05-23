@@ -57,7 +57,7 @@ public class BinanceController {
     public PostBuyResponse buy(
             @RequestParam String base,
             @RequestParam String quote,
-            @RequestParam BigDecimal amount){
+            @RequestParam BigDecimal amount) throws Exception{
         return binanceBuyService.placeMarketBuyOrder(PostBuyRequest.builder()
                         .base(base)
                         .quote(quote)
