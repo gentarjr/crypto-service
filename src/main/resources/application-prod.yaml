@@ -83,20 +83,20 @@ trading:
       rsi-oversold-threshold: 30
       volume-min-multiplier: 0.5
       percent-b-min: -0.1
-      sl-atr-multiplier: 0.5
+      sl-atr-multiplier: 1.0
       tp-atr-multiplier: 1.0
 
   risk:
     modal: 300                  # fallback kalau tidak bisa fetch balance
-    risk-per-trade-percent: 1.0 # 1% per trade
     sl-atr-multiplier: 1.5
     tp-atr-multiplier: 2.0
-    max-daily-loss-percent: 3.0 # halt kalau loss > 3% per hari
-    max-consecutive-losses: 3   # halt kalau 3x loss berturut
     max-position-percent: 90.0  # max 90% balance per posisi
-    cooldown-minutes: 30        # cooldown 30 menit setelah close
     trailing-atr-multiplier: 1.5
-    max-slippage-percent: 0.8
+    risk-per-trade-percent: 0.5   # dari 1.0
+    max-daily-loss-percent: 2.0   # dari 3.0
+    max-consecutive-losses: 2     # dari 3
+    cooldown-minutes: 60          # dari 30
+    max-slippage-percent: 0.8     # dari 0.3
 
   sentiment:
     enabled: true

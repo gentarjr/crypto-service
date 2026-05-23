@@ -52,6 +52,9 @@ public class BinanceWebSocketService {
     @Value("${trading.websocket.enabled:true}")
     private boolean wsEnabled;
 
+    @Value("${exchange.binance.testnet:true}")  // ✅ TAMBAH INI
+    private boolean testnet;
+
     private WebSocketClient wsClient;
     private final AtomicBoolean shouldReconnect = new AtomicBoolean(false);
     private final AtomicBoolean isConnected = new AtomicBoolean(false);
@@ -247,6 +250,17 @@ public class BinanceWebSocketService {
      * Untuk production: pakai proper certificate validation
      */
     private SSLContext buildTrustAllSslContext() throws Exception {
+        if (!testnet) {
+            // ✅ MAINNET: pakai SSL default Java
+            // Binance mainnet punya valid certificate
+            // Tidak perlu trust-all
+            log.info("🔒 Using default SSL (mainnet)");
+            return SSLContext.getDefault();
+        }
+
+        // TESTNET: trust-all SSL
+        // Testnet pakai self-signed certificate
+        log.info("⚠️ Using trust-all SSL (testnet)");
         TrustManager[] trustAllCerts = new TrustManager[]{
                 new X509TrustManager() {
                     public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }

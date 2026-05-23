@@ -39,7 +39,7 @@ public class BinanceSellService {
 
         CurrencyPair pair = new CurrencyPair(request.getBase(), request.getQuote());
         BigDecimal normalizedAmount = request.getAmount()
-                .setScale(1, RoundingMode.DOWN);
+                .setScale(2, RoundingMode.DOWN);
         MarketOrder order = new MarketOrder(Order.OrderType.ASK, normalizedAmount, pair);
 
         log.info("🛒 Placing SELL order: {} {} @ market price", request.getAmount(), request.getBase());
