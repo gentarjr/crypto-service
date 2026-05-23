@@ -103,7 +103,7 @@ trading:
     lunarcrush-api-key: ${LUNARCRUSH_API_KEY}   # ← dari .env
     topic: bnb                                    # ← topik BNB
     score-weight: 15
-    cache-minutes: 30                         # ← update tiap jam
+    cache-minutes: 60                    # ← update tiap jam
 
   websocket:
     base-url: wss://stream.binance.com/ws  # ✅ aktif di VPS

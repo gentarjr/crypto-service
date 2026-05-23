@@ -7,7 +7,6 @@ import com.bot.testnet.crypto.service.TelegramNotificationService;
 import com.bot.testnet.crypto.utils.Constants;
 import com.bot.testnet.crypto.utils.ConvertUtils;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
 import org.knowm.xchange.Exchange;
@@ -36,8 +35,7 @@ public class BinanceBuyService {
      * Place market BUY order
      * amount = jumlah base currency yang dibeli
      */
-    @SneakyThrows
-    public PostBuyResponse placeMarketBuyOrder(PostBuyRequest request){
+    public PostBuyResponse placeMarketBuyOrder(PostBuyRequest request) throws Exception {
         Timestamp now = Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Jakarta")));
         String timestamp = ConvertUtils.convertTimestampToString(now, Constants.DATEFORMAT_YYYYMMDDT_HHMMSSSSSZ);
 
@@ -78,9 +76,16 @@ public class BinanceBuyService {
 
             try {
                 orderId = binanceExchange.getTradeService().placeLimitOrder(limitOrder);
+                if (orderId == null || orderId.isBlank()) {
+                    log.warn("⚠️ Limit order returned null ID, falling back to market");
+                    throw new Exception("Null order ID");
+                }
+                log.info("✅ Limit order placed: {}", orderId);
             } catch (Exception e) {
                 log.warn("⚠️ Limit order failed: {} — fallback to market", e.getMessage());
-                MarketOrder market = new MarketOrder(Order.OrderType.BID, normalizedAmount, pair);
+                // Fallback market order
+                MarketOrder market = new MarketOrder(
+                        Order.OrderType.BID, normalizedAmount, pair);
                 orderId = binanceExchange.getTradeService().placeMarketOrder(market);
             }
         } else {

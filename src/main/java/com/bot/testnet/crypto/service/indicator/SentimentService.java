@@ -51,6 +51,8 @@ public class SentimentService {
     // ─── Cache Volume Spike ────────────────────────────────
     private long previousInteractions = 0;
 
+    private volatile boolean isFetching = false;
+
     // ═══════════════════════════════════════════════════════
     // PUBLIC METHODS
     // ═══════════════════════════════════════════════════════
@@ -212,10 +214,13 @@ public class SentimentService {
     }
 
     private void refreshLunarCrush() {
+        if (isFetching) return;
+
         if (cachedLC != null &&
                 ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
             return;
         }
+        isFetching = true;
         try {
             String url = "https://lunarcrush.com/api4/public/topic/" + topic + "/v1";
             HttpHeaders headers = new HttpHeaders();
@@ -253,8 +258,8 @@ public class SentimentService {
                         newData.interactions24h,
                         String.format("%.1f", spikeChg));
             }
-        } catch (Exception e) {
-            log.warn("⚠️ LunarCrush fetch failed: {} — using cache/fallback", e.getMessage());
+        } finally {
+            isFetching = false;
         }
     }
 
