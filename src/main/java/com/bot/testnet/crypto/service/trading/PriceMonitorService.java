@@ -98,6 +98,9 @@ public class PriceMonitorService {
         LivePosition position = orderExecutorService.getOpenPosition();
         if (position == null) return;
 
+        // ✅ Update trailing SL dulu sebelum cek hit
+        orderExecutorService.updateTrailingFromWebSocket(price);
+
         if (position.isHitTakeProfit(price)) {
             log.info("🎯 [LIVE WebSocket] TP HIT: {} >= {}",
                     price, position.getTakeProfit());

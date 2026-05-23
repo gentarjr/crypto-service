@@ -440,6 +440,31 @@ public class OrderExecutorService {
                 return; // ← jangan buka posisi
             }
 
+            BigDecimal originalEntry = signal.getPrice();
+            BigDecimal originalSL    = signal.getStopLoss();
+            BigDecimal adjustedSL    = originalSL;
+            BigDecimal adjustedTP    = signal.getTakeProfit();
+
+            if (originalEntry != null && originalEntry.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal slDistance = originalEntry.subtract(originalSL).abs();
+                BigDecimal tpDistance = signal.getTakeProfit() != null
+                        ? signal.getTakeProfit().subtract(originalEntry).abs()
+                        : BigDecimal.ZERO;
+
+                adjustedSL = actualEntry.subtract(slDistance);
+                if (tpDistance.compareTo(BigDecimal.ZERO) > 0) {
+                    adjustedTP = actualEntry.add(tpDistance);
+                }
+
+                if (adjustedSL.compareTo(originalSL) != 0) {
+                    log.info("📐 SL/TP adjusted: entry ${} → actual ${} | " +
+                                    "SL: ${} → ${} | TP: ${} → ${}",
+                            originalEntry, actualEntry,
+                            originalSL, adjustedSL,
+                            signal.getTakeProfit(), adjustedTP);
+                }
+            }
+
             positionLock.lock();
             try {
                 openPosition = LivePosition.builder()
@@ -960,5 +985,18 @@ public class OrderExecutorService {
                                 today, formatTime()));
             }
         }
+    }
+
+    /**
+     * Update trailing SL dari WebSocket (tiap detik)
+     * Dipanggil dari PriceMonitorService
+     */
+    public void updateTrailingFromWebSocket(BigDecimal price) {
+        if (!liveEnabled || openPosition == null) return;
+        if (lastSnapshot == null) return;
+        if (openPosition.getStrategy() != StrategyType.EMA_CROSSOVER) return;
+
+        openPosition.updateHighestPrice(price);
+        trailingStopHelper.update(openPosition, price, lastSnapshot.getAtr(), "LIVE-WS");
     }
 }
