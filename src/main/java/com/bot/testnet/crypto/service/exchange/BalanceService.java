@@ -41,9 +41,14 @@ public class BalanceService {
                             .build())
                     .getAvailable();
 
-            if (available == null || available.compareTo(BigDecimal.ZERO) <= 0) {
-                log.warn("⚠️ Balance is 0 or null, using fallback modal: ${}", fallbackModal);
+            if (available == null) {
+                log.warn("⚠️ Balance is null, using fallback: ${}", fallbackModal);
                 return BigDecimal.valueOf(fallbackModal);
+            }
+
+            if (available.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("⚠️ Available USDT = $0 — tidak cukup untuk trading");
+                return BigDecimal.ZERO;
             }
 
             log.debug("💰 Available balance: ${}", available);

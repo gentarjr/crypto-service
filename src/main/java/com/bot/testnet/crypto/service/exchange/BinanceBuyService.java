@@ -77,13 +77,23 @@ public class BinanceBuyService {
             try {
                 orderId = binanceExchange.getTradeService().placeLimitOrder(limitOrder);
                 if (orderId == null || orderId.isBlank()) {
-                    log.warn("⚠️ Limit order returned null ID, falling back to market");
-                    throw new Exception("Null order ID");
+                    // ✅ Cek balance — mungkin order sudah fill meski null ID
+                    BigDecimal balanceCheck = binanceService.getBalance(
+                            GetBalanceCurrencyRequest.builder()
+                                    .currency(request.getBase())
+                                    .build()).getTotal();
+                    BigDecimal diff = balanceCheck.subtract(balanceBefore);
+                    if (diff.compareTo(BigDecimal.ZERO) > 0) {
+                        // Order fill! Pakai balance diff sebagai confirmation
+                        log.info("✅ Limit order filled (null ID but balance changed): diff={}", diff);
+                        orderId = "FILLED_NO_ID";
+                    } else {
+                        log.warn("⚠️ Limit order returned null ID — fallback to market");
+                        throw new Exception("Null order ID");
+                    }
                 }
-                log.info("✅ Limit order placed: {}", orderId);
             } catch (Exception e) {
                 log.warn("⚠️ Limit order failed: {} — fallback to market", e.getMessage());
-                // Fallback market order
                 MarketOrder market = new MarketOrder(
                         Order.OrderType.BID, normalizedAmount, pair);
                 orderId = binanceExchange.getTradeService().placeMarketOrder(market);

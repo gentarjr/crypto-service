@@ -34,7 +34,7 @@ public class BinanceController {
     private final AdaptiveSignalService adaptiveSignalService;
 
     @GetMapping("/price/{base}/{quote}")
-    public GetCurrentPriceResponse getPrice(@PathVariable String base, @PathVariable String quote) {
+    public GetCurrentPriceResponse getPrice(@PathVariable String base, @PathVariable String quote) throws Exception {
         return binanceService.getCurrentPrice(GetCurrentPriceRequest.builder()
                         .base(base)
                         .quote(quote)
@@ -42,12 +42,12 @@ public class BinanceController {
     }
 
     @GetMapping("/balances")
-    public List<Balance> getBalances() {
+    public List<Balance> getBalances() throws Exception{
         return binanceService.getNonZeroBalances();
     }
 
     @GetMapping("/balance/{currency}")
-    public Balance getBalanceCurrency(@PathVariable String currency){
+    public Balance getBalanceCurrency(@PathVariable String currency) throws Exception{
         return binanceService.getBalance(GetBalanceCurrencyRequest.builder()
                         .currency(currency.toUpperCase())
                 .build());
@@ -69,7 +69,7 @@ public class BinanceController {
     public PostSellResponse sell(
             @RequestParam String base,
             @RequestParam String quote,
-            @RequestParam BigDecimal amount) {
+            @RequestParam BigDecimal amount) throws Exception{
         return binanceSellService.placeMarketSellOrder(PostSellRequest.builder()
                 .base(base)
                 .quote(quote)

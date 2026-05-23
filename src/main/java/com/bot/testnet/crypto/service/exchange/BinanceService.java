@@ -6,7 +6,6 @@ import com.bot.testnet.crypto.model.response.GetCurrentPriceResponse;
 import com.bot.testnet.crypto.utils.Constants;
 import com.bot.testnet.crypto.utils.ConvertUtils;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.knowm.xchange.Exchange;
 import org.knowm.xchange.currency.Currency;
@@ -37,8 +36,7 @@ public class BinanceService {
      * Get harga terkini untuk pasangan currency
      * Contoh: getCurrentPrice("BTC", "USDT")
      */
-    @SneakyThrows
-    public GetCurrentPriceResponse getCurrentPrice(GetCurrentPriceRequest request){
+    public GetCurrentPriceResponse getCurrentPrice(GetCurrentPriceRequest request) throws Exception{
         CurrencyPair pair = new CurrencyPair(request.getBase(), request.getQuote());
         Ticker ticker = binanceExchange.getMarketDataService().getTicker(pair);
         log.info("Current price {}/{}: {}", request.getBase(), request.getQuote(), ticker.getLast());
@@ -55,8 +53,7 @@ public class BinanceService {
     /**
      * Get semua balance yang ada saldonya
      */
-    @SneakyThrows
-    public List<Balance> getNonZeroBalances() {
+    public List<Balance> getNonZeroBalances() throws Exception{
         List<String> symbol = Arrays.asList(balanceSymbols.split("\\|"));
         AccountInfo info = binanceExchange.getAccountService().getAccountInfo();
         return info.getWallet().getBalances().values().stream()
@@ -68,8 +65,7 @@ public class BinanceService {
     /**
      * Get balance untuk currency tertentu
      */
-    @SneakyThrows
-    public Balance getBalance(GetBalanceCurrencyRequest request) {
+    public Balance getBalance(GetBalanceCurrencyRequest request)throws Exception {
         AccountInfo info = binanceExchange.getAccountService().getAccountInfo();
         return info.getWallet().getBalance(Currency.getInstance(request.getCurrency()));
     }

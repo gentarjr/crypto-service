@@ -232,6 +232,21 @@ public class OrderExecutorService {
         try {
             // 1. Cek balance USDT tersedia
             BigDecimal availableUsdt = balanceService.getAvailableCapital();
+            if (availableUsdt.compareTo(new BigDecimal("10")) < 0) {
+                log.warn("⚠️ Insufficient USDT: ${}", availableUsdt);
+                telegramService.sendMessage(
+                        "⚠️ [LIVE] Insufficient Balance",
+                        String.format(
+                                "USDT tidak cukup untuk trading!\n\n" +
+                                        "Available: <b>$%.2f</b>\n" +
+                                        "Minimum: <b>$10</b>\n\n" +
+                                        "Cek apakah ada BNB nyangkut di Binance!\n" +
+                                        "⏰ %s WIB",
+                                availableUsdt.doubleValue(),
+                                formatTime()));
+                return;
+            }
+
             BigDecimal positionSize = signal.getPositionSize();
             if (positionSize == null || positionSize.compareTo(BigDecimal.ZERO) <= 0) {
                 log.error("❌ Invalid position size: {}", positionSize);
@@ -335,11 +350,18 @@ public class OrderExecutorService {
             }
 
             BigDecimal limitPrice = currentPrice.multiply(
-                    BigDecimal.ONE.add(
-                            BigDecimal.valueOf(maxSlippagePercent / 100)))
+                            BigDecimal.ONE.add(
+                                    BigDecimal.valueOf(maxSlippagePercent / 100)))
                     .setScale(2, RoundingMode.DOWN);
-            log.info("📋 Limit price: ${} ({}% above ${})",
-                    limitPrice, maxSlippagePercent, currentPrice);
+
+            BigDecimal adjustedQuantity = positionSize
+                    .divide(limitPrice, 6, RoundingMode.HALF_UP)
+                    .setScale(2, RoundingMode.DOWN);
+
+            log.info("📐 Quantity adjusted for limit price: {} → {} BNB (limitPrice=${})",
+                    quantity, adjustedQuantity, limitPrice);
+
+            quantity = adjustedQuantity;
 
             var orderResult = binanceBuyService.placeMarketBuyOrder(
                     buildBuyRequest(quantity, limitPrice));

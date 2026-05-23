@@ -6,7 +6,6 @@ import com.bot.testnet.crypto.model.response.PostSellResponse;
 import com.bot.testnet.crypto.utils.Constants;
 import com.bot.testnet.crypto.utils.ConvertUtils;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
 import org.knowm.xchange.Exchange;
@@ -32,8 +31,7 @@ public class BinanceSellService {
     /**
      * Place market SELL order
      */
-    @SneakyThrows
-    public PostSellResponse placeMarketSellOrder(PostSellRequest request) {
+    public PostSellResponse placeMarketSellOrder(PostSellRequest request) throws Exception {
         Timestamp now = Timestamp.valueOf(LocalDateTime.now(ZoneId.of("Asia/Jakarta")));
         String timestamp = ConvertUtils.convertTimestampToString(now, Constants.DATEFORMAT_YYYYMMDDT_HHMMSSSSSZ);
 

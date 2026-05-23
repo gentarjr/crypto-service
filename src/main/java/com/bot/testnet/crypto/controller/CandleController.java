@@ -29,7 +29,7 @@ public class CandleController {
             @RequestParam(defaultValue = "BNB") String base,
             @RequestParam(defaultValue = "USDT") String quote,
             @RequestParam(defaultValue = "m15") String interval,
-            @RequestParam(defaultValue = "10") int limit){
+            @RequestParam(defaultValue = "10") int limit) throws Exception{
         return candleService.fetchCandles(GetCandleRequest.builder()
                         .base(base)
                         .quote(quote)
@@ -46,7 +46,7 @@ public class CandleController {
             @RequestParam(defaultValue = "BNB") String base,
             @RequestParam(defaultValue = "USDT") String quote,
             @RequestParam(defaultValue = "m15") String interval,
-            @RequestParam(defaultValue = "10") int limit){
+            @RequestParam(defaultValue = "10") int limit) throws Exception{
         return candleService.getLatestCandle(GetLatestCandleRequest.builder()
                 .base(base)
                 .quote(quote)

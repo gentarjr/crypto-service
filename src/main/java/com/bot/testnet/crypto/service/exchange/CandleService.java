@@ -5,7 +5,6 @@ import com.bot.testnet.crypto.model.request.GetLatestCandleRequest;
 import com.bot.testnet.crypto.model.dto.Candle;
 import com.bot.testnet.crypto.model.response.GetCandleResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.knowm.xchange.Exchange;
 import org.knowm.xchange.binance.dto.marketdata.BinanceKline;
@@ -15,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -34,8 +32,7 @@ public class CandleService {
      * @param limit      jumlah candle (max 1000, default Binance 500)
      * @return List of Candle objects (urutan: oldest to newest)
      */
-    @SneakyThrows
-    public GetCandleResponse fetchCandles(GetCandleRequest request) {
+    public GetCandleResponse fetchCandles(GetCandleRequest request) throws Exception{
         log.info("📊 Fetching {} candles of {}/{} @ {} timeframe",
                 request.getLimit(), request.getBase(), request.getQuote(), request.getInterval());
 
@@ -73,9 +70,7 @@ public class CandleService {
     /**
      * Helper: get candle terbaru (latest)
      */
-
-    @SneakyThrows
-    public GetCandleResponse getLatestCandle(GetLatestCandleRequest request) {
+    public GetCandleResponse getLatestCandle(GetLatestCandleRequest request) throws Exception{
         return fetchCandles(
                 GetCandleRequest.builder()
                         .base(request.getBase())

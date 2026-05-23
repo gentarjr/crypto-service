@@ -39,6 +39,9 @@ public class SentimentService {
     @Value("${trading.sentiment.cache-minutes:30}")
     private long cacheMinutes;
 
+    @Value("${trading.sentiment.lunarcrush-enabled:true}")
+    private boolean lunarcrushEnabled;
+
     // ─── Cache LunarCrush ──────────────────────────────────
     private LunarCrushData cachedLC   = null;
     private Instant        lastFetchLC = Instant.EPOCH;
@@ -67,8 +70,9 @@ public class SentimentService {
      */
     public int getSentimentScore() {
         if (!isEnabled()) return 50;
-        refreshAll();
-        int lc  = cachedLC != null ? cachedLC.weightedSentiment : 50;
+        refreshAll(); // refreshFearAndGreed tetap jalan
+        int lc  = (lunarcrushEnabled && cachedLC != null)
+                ? cachedLC.weightedSentiment : 50; // neutral kalau disabled
         int fng = cachedFNG;
         return (int)(lc * 0.60 + fng * 0.40);
     }
@@ -214,7 +218,10 @@ public class SentimentService {
     }
 
     private void refreshLunarCrush() {
-        if (isFetching) return;
+        if (!lunarcrushEnabled) {
+            log.debug("LunarCrush disabled, skipping");
+            return;
+        }
 
         if (cachedLC != null &&
                 ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
