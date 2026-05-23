@@ -420,8 +420,8 @@ public class OrderExecutorService {
                                 formatTime()));
                 try {
                     BigDecimal sellAmt = orderResult.getFilledAmount() != null
-                            ? orderResult.getFilledAmount().setScale(1, RoundingMode.DOWN)
-                            : quantity.setScale(1, RoundingMode.DOWN);
+                            ? orderResult.getFilledAmount().setScale(2, RoundingMode.DOWN)
+                            : quantity.setScale(2, RoundingMode.DOWN);
                     binanceSellService.placeMarketSellOrder(
                             PostSellRequest.builder()
                                     .base(baseCurrency)
@@ -473,7 +473,7 @@ public class OrderExecutorService {
                                 OcoOrderRequest.builder()
                                         .base(baseCurrency)
                                         .quote(quoteCurrency)
-                                        .quantity(openPosition.getQuantity().setScale(1, RoundingMode.DOWN))
+                                        .quantity(openPosition.getQuantity().setScale(2, RoundingMode.DOWN))
                                         .takeProfitPrice(signal.getTakeProfit().setScale(2, RoundingMode.HALF_UP))
                                         .stopLossPrice(signal.getStopLoss().setScale(2, RoundingMode.DOWN))
                                         .build());
@@ -651,7 +651,7 @@ public class OrderExecutorService {
                     actualBnbBalance = openPosition.getQuantity();
                 }
 
-                BigDecimal sellAmount = actualBnbBalance.setScale(1, RoundingMode.DOWN);
+                BigDecimal sellAmount = actualBnbBalance.setScale(2, RoundingMode.DOWN);
                 log.info("💰 Selling {} BNB (position qty: {}, actual balance: {})",
                         sellAmount, openPosition.getQuantity(), actualBnbBalance);
 
