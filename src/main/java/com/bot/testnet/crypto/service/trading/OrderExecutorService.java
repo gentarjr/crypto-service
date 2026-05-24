@@ -698,9 +698,20 @@ public class OrderExecutorService {
                     actualBnbBalance = openPosition.getQuantity();
                 }
 
-                BigDecimal sellAmount = actualBnbBalance.setScale(2, RoundingMode.DOWN);
-                log.info("💰 Selling {} BNB (position qty: {}, actual balance: {})",
-                        sellAmount, openPosition.getQuantity(), actualBnbBalance);
+                BigDecimal feeBuffer = actualBnbBalance
+                        .multiply(new BigDecimal("0.00075"))
+                        .setScale(4, RoundingMode.UP);
+                BigDecimal sellAmount = actualBnbBalance
+                        .subtract(feeBuffer)
+                        .setScale(2, RoundingMode.DOWN);
+
+                BigDecimal minQty = new BigDecimal("0.01");
+                if (sellAmount.compareTo(minQty) < 0) {
+                    sellAmount = minQty;
+                }
+
+                log.info("💰 Sell amount: {} BNB (balance: {}, fee buffer: {})",
+                        sellAmount, actualBnbBalance, feeBuffer);
 
                 var sellResult = binanceSellService.placeMarketSellOrder(
                         PostSellRequest.builder()

@@ -72,12 +72,12 @@ public class BinanceOcoService {
             String params = "symbol=" + symbol +
                     "&side=SELL" +
                     "&quantity=" + qty.toPlainString() +
-                    "&aboveType=STOP_LOSS_LIMIT" +
-                    "&aboveStopPrice=" + slPrice.toPlainString() +
-                    "&abovePrice=" + slLimit.toPlainString() +
-                    "&aboveTimeInForce=GTC" +
-                    "&belowType=LIMIT_MAKER" +
-                    "&belowPrice=" + tpPrice.toPlainString() +
+                    "&aboveType=LIMIT_MAKER" +
+                    "&abovePrice=" + tpPrice.toPlainString() +
+                    "&belowType=STOP_LOSS_LIMIT" +
+                    "&belowStopPrice=" + slPrice.toPlainString() +
+                    "&belowPrice=" + slLimit.toPlainString() +
+                    "&belowTimeInForce=GTC" +
                     "&timestamp=" + timestamp;
 
             String signature = hmacSha256(secretKey, params);

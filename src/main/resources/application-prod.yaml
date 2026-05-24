@@ -89,7 +89,7 @@ trading:
   risk:
     modal: 300                  # fallback kalau tidak bisa fetch balance
     sl-atr-multiplier: 1.5
-    tp-atr-multiplier: 2.0
+    tp-atr-multiplier: 3.0
     max-position-percent: 90.0  # max 90% balance per posisi
     trailing-atr-multiplier: 1.5
     risk-per-trade-percent: 0.5   # dari 1.0
