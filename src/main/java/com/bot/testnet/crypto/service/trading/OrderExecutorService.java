@@ -497,9 +497,9 @@ public class OrderExecutorService {
                         .requestedPrice(currentPrice)
                         .quantity(quantity)
                         .positionValue(positionSize)
-                        .stopLoss(signal.getStopLoss())
-                        .initialStopLoss(signal.getStopLoss())
-                        .takeProfit(signal.getTakeProfit())
+                        .stopLoss(adjustedSL)
+                        .initialStopLoss(adjustedSL)
+                        .takeProfit(adjustedTP)
                         .highestPrice(actualEntry)
                         .trailingActive(false)
                         .status("OPEN")
@@ -521,12 +521,13 @@ public class OrderExecutorService {
                                         .base(baseCurrency)
                                         .quote(quoteCurrency)
                                         .quantity(openPosition.getQuantity().setScale(2, RoundingMode.DOWN))
-                                        .takeProfitPrice(signal.getTakeProfit().setScale(2, RoundingMode.HALF_UP))
-                                        .stopLossPrice(signal.getStopLoss().setScale(2, RoundingMode.DOWN))
+                                        .takeProfitPrice(adjustedTP.setScale(2, RoundingMode.HALF_UP))
+                                        .stopLossPrice(adjustedSL.setScale(2, RoundingMode.DOWN))
                                         .build());
 
                         if ("SUCCESS".equals(ocoResult.getStatus())) {
                             openPosition.setOcoOrderListId(ocoResult.getOrderListId());
+                            openPosition.setLastOcoSL(adjustedSL);
                             log.info("✅ OCO placed: {}", ocoResult.getOrderListId());
                             telegramService.sendMessage(
                                     "🛡️ [LIVE] OCO Protection Active",
@@ -610,7 +611,20 @@ public class OrderExecutorService {
         // Update trailing SL (EMA strategy only)
         if (lastSnapshot != null
                 && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
-            trailingStopHelper.update(openPosition, currentPrice, lastSnapshot.getAtr(), "LIVE");
+            boolean trailingUpdated = trailingStopHelper.update(
+                    openPosition, currentPrice, lastSnapshot.getAtr(), "LIVE");
+
+            if (trailingUpdated && openPosition.getOcoOrderListId() != null) {
+                BigDecimal slChange = openPosition.getStopLoss()
+                        .subtract(openPosition.getLastOcoSL() != null
+                                ? openPosition.getLastOcoSL()
+                                : openPosition.getInitialStopLoss())
+                        .abs();
+                if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
+                    updateOcoAfterTrailing(openPosition);
+                    openPosition.setLastOcoSL(openPosition.getStopLoss());
+                }
+            }
         }
 
         // Check TP (BB strategy)
@@ -665,8 +679,20 @@ public class OrderExecutorService {
         // Update trailing SL (EMA strategy only)
         if (lastSnapshot != null
                 && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
-            trailingStopHelper.update(
+            boolean trailingUpdated = trailingStopHelper.update(
                     openPosition, realtimePrice, lastSnapshot.getAtr(), "LIVE");
+
+            if (trailingUpdated && openPosition.getOcoOrderListId() != null) {
+                BigDecimal slChange = openPosition.getStopLoss()
+                        .subtract(openPosition.getLastOcoSL() != null
+                                ? openPosition.getLastOcoSL()
+                                : openPosition.getInitialStopLoss())
+                        .abs();
+                if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
+                    updateOcoAfterTrailing(openPosition);
+                    openPosition.setLastOcoSL(openPosition.getStopLoss());
+                }
+            }
         }
     }
 
@@ -675,36 +701,63 @@ public class OrderExecutorService {
         try {
             if (openPosition == null) return;
 
-            log.info("🔄 [LIVE] Closing position #{} ({})...",
-                    openPosition.getId(), reason);
+            // ✅ Clear openPosition SEGERA di awal
+            // Mencegah WebSocket/Scheduler trigger close lagi (loop!)
+            LivePosition positionToClose = openPosition;
+            openPosition = null;
 
-            if (openPosition.getOcoOrderListId() != null) {
+            log.info("🔄 [LIVE] Closing position #{} ({})...",
+                    positionToClose.getId(), reason);
+
+            // Cancel OCO kalau ada
+            if (positionToClose.getOcoOrderListId() != null) {
                 log.info("🗑️ Cancelling OCO before close...");
                 binanceOcoService.cancelOcoOrder(
                         baseCurrency + quoteCurrency,
-                        openPosition.getOcoOrderListId());
+                        positionToClose.getOcoOrderListId());
+                // Tunggu 2 detik supaya OCO cancel diproses
+                try { Thread.sleep(2000); }
+                catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
             }
 
+            // Cek BNB balance setelah cancel OCO
+            BigDecimal actualBnbBalance;
             try {
-                // Place SELL order
-                BigDecimal actualBnbBalance;
-                try {
-                    actualBnbBalance = balanceService.getAvailableBnb();
-                    if (actualBnbBalance == null || actualBnbBalance.compareTo(BigDecimal.ZERO) <= 0) {
-                        actualBnbBalance = openPosition.getQuantity();
-                    }
-                } catch (Exception e) {
-                    log.warn("Cannot fetch BNB balance, using position qty: {}", e.getMessage());
-                    actualBnbBalance = openPosition.getQuantity();
-                }
+                actualBnbBalance = balanceService.getAvailableBnb();
+            } catch (Exception e) {
+                log.warn("Cannot fetch BNB balance: {}", e.getMessage());
+                actualBnbBalance = positionToClose.getQuantity();
+            }
 
+            // ✅ Kalau BNB < 0.01 → OCO sudah eksekusi duluan
+            // Skip manual SELL
+            if (actualBnbBalance == null
+                    || actualBnbBalance.compareTo(new BigDecimal("0.01")) < 0) {
+                log.info("✅ BNB = 0 — position already closed by OCO");
+                telegramService.sendMessage(
+                        "✅ [LIVE] Position Closed by OCO",
+                        String.format(
+                                "Position #%s closed by Binance OCO.\n" +
+                                        "Reason: %s\n" +
+                                        "⏰ %s WIB",
+                                positionToClose.getId(),
+                                reason,
+                                formatTime()));
+                // Update stats
+                updateCloseStats(positionToClose, exitPrice, reason);
+                return;
+            }
+
+            // BNB masih ada → SELL manual
+            try {
                 BigDecimal feeBuffer = actualBnbBalance
                         .multiply(new BigDecimal("0.00075"))
                         .setScale(4, RoundingMode.UP);
                 BigDecimal sellAmount = actualBnbBalance
                         .subtract(feeBuffer)
                         .setScale(2, RoundingMode.DOWN);
-
                 BigDecimal minQty = new BigDecimal("0.01");
                 if (sellAmount.compareTo(minQty) < 0) {
                     sellAmount = minQty;
@@ -721,95 +774,40 @@ public class OrderExecutorService {
                                 .build());
 
                 if (!"FILLED".equals(sellResult.getStatus())) {
-                    log.error("❌ [LIVE] SELL order failed: {}", sellResult.getStatus());
+                    log.error("❌ [LIVE] SELL failed: {}", sellResult.getStatus());
                     telegramService.sendMessage(
                             "🚨 [LIVE] SELL FAILED — MANUAL ACTION NEEDED!",
                             String.format(
                                     "Position #%s could not be closed!\n" +
-                                            "Reason: %s\n" +
-                                            "Status: %s\n\n" +
-                                            "⚠️ Please close manually on Binance!",
-                                    openPosition.getId(),
+                                            "Reason: %s\nStatus: %s\n\n" +
+                                            "⚠️ Close manually on Binance!\n" +
+                                            "⏰ %s WIB",
+                                    positionToClose.getId(),
                                     reason,
-                                    sellResult.getStatus()));
+                                    sellResult.getStatus(),
+                                    formatTime()));
+                    // openPosition sudah null di atas → tidak loop ✅
                     return;
                 }
 
-                // Calculate P&L
-                BigDecimal pnl = openPosition.calculateUnrealizedPnl(exitPrice);
-
-                // ✅ Hitung fee Binance (0.075% per side pakai BNB)
-                BigDecimal feeRate   = new BigDecimal("0.00075");
-                BigDecimal buyFee    = openPosition.getPositionValue()
-                        .multiply(feeRate);
-                BigDecimal sellValue = exitPrice.multiply(openPosition.getQuantity());
-                BigDecimal sellFee   = sellValue.multiply(feeRate);
-                BigDecimal totalFee  = buyFee.add(sellFee);
-
-                // ✅ P&L setelah fee
-                BigDecimal pnlAfterFee = pnl.subtract(totalFee);
-
-                // ✅ P&L percent dari posisi
-                BigDecimal pnlPercent = openPosition.getPositionValue()
-                        .compareTo(BigDecimal.ZERO) > 0
-                        ? pnlAfterFee
-                        .divide(openPosition.getPositionValue(), 6,
-                                java.math.RoundingMode.HALF_UP)
-                        .multiply(BigDecimal.valueOf(100))
-                        : BigDecimal.ZERO;
-
-                boolean isWin = pnlAfterFee.compareTo(BigDecimal.ZERO) > 0;
-
-                openPosition.setClosePrice(exitPrice);
-                openPosition.setFee(totalFee);
-                openPosition.setRealizedPnl(pnlAfterFee);
-                openPosition.setPnlAfterFee(pnlAfterFee);
-                openPosition.setPnlPercent(pnlPercent);
-                openPosition.setCloseReason(reason);
-                openPosition.setCloseTime(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant());
-                openPosition.setStatus("CLOSED");
-
-                // ─── Update stats ───────────────────────────────
-                dailyPnl = dailyPnl.add(pnlAfterFee);
-                if (isWin) {
-                    consecutiveLosses = 0;
-                } else {
-                    consecutiveLosses++;
-                }
-                lastCloseTime = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
-
-                log.info("✅ [LIVE] Position CLOSED #{}: {} | gross=${} fee=${} net=${} ({}%)",
-                        openPosition.getId(), reason,
-                        String.format("%.4f", pnl.doubleValue()),
-                        String.format("%.4f", totalFee.doubleValue()),
-                        String.format("%.4f", pnlAfterFee.doubleValue()),
-                        String.format("%.2f", pnlPercent.doubleValue()));
-
-                closedPositions.add(openPosition);
-                sendLivePositionClosedNotif(openPosition);
-                openPosition = null;
+                // SELL berhasil → update stats
+                updateCloseStats(positionToClose, exitPrice, reason);
 
             } catch (Exception e) {
                 log.error("❌ SELL error: {}", e.getMessage());
-
-                // CRITICAL — posisi masih terbuka!
                 telegramService.sendMessage(
-                        "🚨 CRITICAL — SELL GAGAL!",
+                        "🚨 [LIVE] SELL ERROR — MANUAL ACTION NEEDED!",
                         String.format(
-                                "⚠️ POSISI MASIH TERBUKA!\n\n" +
-                                        "ID: #%s\n" +
-                                        "Pair: BNB/USDT\n" +
-                                        "Qty: %s BNB\n" +
-                                        "Entry: $%s\n" +
+                                "Position #%s error!\n" +
                                         "Error: %s\n\n" +
-                                        "🔴 SEGERA TUTUP MANUAL DI BINANCE!\n" +
+                                        "⚠️ Close manually on Binance!\n" +
                                         "⏰ %s WIB",
-                                openPosition.getId(),
-                                openPosition.getQuantity(),
-                                openPosition.getEntryPrice(),
+                                positionToClose.getId(),
                                 e.getMessage(),
                                 formatTime()));
+                // openPosition sudah null → tidak loop ✅
             }
+
         } finally {
             positionLock.unlock();
         }
@@ -928,6 +926,49 @@ public class OrderExecutorService {
                         formatTime()));
     }
 
+    private void updateCloseStats(LivePosition position,
+                                  BigDecimal exitPrice,
+                                  String reason) {
+        BigDecimal pnl = position.calculateUnrealizedPnl(exitPrice);
+        BigDecimal feeRate = new BigDecimal("0.00075");
+        BigDecimal buyFee = position.getPositionValue().multiply(feeRate);
+        BigDecimal sellFee = exitPrice.multiply(position.getQuantity())
+                .multiply(feeRate);
+        BigDecimal totalFee = buyFee.add(sellFee);
+        BigDecimal pnlAfterFee = pnl.subtract(totalFee);
+        BigDecimal pnlPercent = position.getPositionValue()
+                .compareTo(BigDecimal.ZERO) > 0
+                ? pnlAfterFee.divide(position.getPositionValue(),
+                        6, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                : BigDecimal.ZERO;
+
+        boolean isWin = pnlAfterFee.compareTo(BigDecimal.ZERO) > 0;
+
+        position.setClosePrice(exitPrice);
+        position.setFee(totalFee);
+        position.setRealizedPnl(pnlAfterFee);
+        position.setPnlAfterFee(pnlAfterFee);
+        position.setPnlPercent(pnlPercent);
+        position.setCloseReason(reason);
+        position.setCloseTime(ZonedDateTime.now(
+                ZoneId.of("Asia/Jakarta")).toInstant());
+        position.setStatus("CLOSED");
+
+        dailyPnl = dailyPnl.add(pnlAfterFee);
+        consecutiveLosses = isWin ? 0 : consecutiveLosses + 1;
+        lastCloseTime = ZonedDateTime.now(
+                ZoneId.of("Asia/Jakarta")).toInstant();
+        closedPositions.add(position);
+
+        log.info("✅ [LIVE] Position CLOSED #{}: {} | net=${} ({}%)",
+                position.getId(), reason,
+                String.format("%.4f", pnlAfterFee.doubleValue()),
+                String.format("%.2f", pnlPercent.doubleValue()));
+
+        sendLivePositionClosedNotif(position);
+    }
+
     // SESUDAH:
     private void sendLivePositionClosedNotif(LivePosition position) {
         boolean isWin = position.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0;
@@ -1031,5 +1072,46 @@ public class OrderExecutorService {
 
         openPosition.updateHighestPrice(price);
         trailingStopHelper.update(openPosition, price, lastSnapshot.getAtr(), "LIVE-WS");
+    }
+
+    private void updateOcoAfterTrailing(LivePosition position) {
+        try {
+            String oldOcoId = position.getOcoOrderListId();
+
+            binanceOcoService.cancelOcoOrder(
+                    baseCurrency + quoteCurrency, oldOcoId);
+            position.setOcoOrderListId(null);
+
+            BigDecimal ocoQty = position.getQuantity()
+                    .setScale(2, RoundingMode.DOWN);
+            BigDecimal ocoTP  = position.getTakeProfit()
+                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal ocoSL  = position.getStopLoss()
+                    .setScale(2, RoundingMode.DOWN);
+
+            if (ocoTP.compareTo(ocoSL) <= 0) {
+                log.warn("⚠️ OCO update skip: TP ${} <= SL ${}", ocoTP, ocoSL);
+                return;
+            }
+
+            OcoOrderResponse newOco = binanceOcoService.placeOcoOrder(
+                    OcoOrderRequest.builder()
+                            .base(baseCurrency)
+                            .quote(quoteCurrency)
+                            .quantity(ocoQty)
+                            .takeProfitPrice(ocoTP)
+                            .stopLossPrice(ocoSL)
+                            .build());
+
+            if ("SUCCESS".equals(newOco.getStatus())) {
+                position.setOcoOrderListId(newOco.getOrderListId());
+                log.info("✅ OCO updated after trailing: SL=${} id={}",
+                        ocoSL, newOco.getOrderListId());
+            } else {
+                log.warn("⚠️ OCO update failed: {}", newOco.getErrorMessage());
+            }
+        } catch (Exception e) {
+            log.error("❌ OCO update error: {}", e.getMessage());
+        }
     }
 }

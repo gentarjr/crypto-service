@@ -23,6 +23,7 @@ public class LivePosition implements TrailablePosition {
     private String binanceOrderId;      // order ID dari Binance
     private String ocoOrderListId;
     private StrategyType strategy;
+    private BigDecimal lastOcoSL;
 
     // Entry details
     private BigDecimal entryPrice;      // actual fill price

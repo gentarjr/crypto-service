@@ -39,6 +39,8 @@ trading:
   pair:
     base: BNB
     quote: USDT
+  oco:
+    enabled: true
 
   market-data:
     primary-interval: m15    # ✅ 15 menit (bukan m5)

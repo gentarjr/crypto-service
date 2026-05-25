@@ -30,6 +30,9 @@ public class BinanceOcoService {
     @Value("${exchange.binance.secret-key}")
     private String secretKey;
 
+    @Value("${trading.oco.enabled:true}")
+    private boolean ocoEnabled;
+
     private static final String MAINNET_URL = "https://api.binance.com";
     private static final String HMAC_SHA256  = "HmacSHA256";
 
@@ -38,7 +41,7 @@ public class BinanceOcoService {
      * Pakai Binance REST API langsung (XChange tidak support OCO)
      */
     public OcoOrderResponse placeOcoOrder(OcoOrderRequest request) {
-        if (testnet) {
+        if (testnet || !ocoEnabled) {
             log.info("ℹ️ OCO skipped — testnet mode");
             return OcoOrderResponse.builder()
                     .status("SKIPPED")
