@@ -34,10 +34,13 @@ public class TrailingStopHelper {
         if (!position.isTrailingActive()
                 && position.isBreakevenActivationReached(currentPrice)) {
             position.setTrailingActive(true);
-            boolean updated = position.ratchetStopLoss(position.getEntryPrice());
+            BigDecimal feeBuffer = position.getEntryPrice()
+                    .multiply(new BigDecimal("0.002"));
+            BigDecimal breakevenSL = position.getEntryPrice().add(feeBuffer);
+            boolean updated = position.ratchetStopLoss(breakevenSL);
             if (updated) {
-                log.info("🔓 [{}] Trailing activated → breakeven ${}",
-                        label, position.getEntryPrice());
+                log.info("🔓 [{}] Trailing activated → breakeven+fee ${}",
+                        label, breakevenSL);
             }
             return updated;
         }
