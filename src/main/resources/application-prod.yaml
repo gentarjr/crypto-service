@@ -76,8 +76,8 @@ trading:
       rsi-max-threshold: 70
       price-extension-max: 1.03
       atr-extreme-multiplier: 2.5
-      buy-score-threshold: 60
-      strong-buy-score-threshold: 80
+      buy-score-threshold: 65
+      strong-buy-score-threshold: 85
     bb:
       buy-score-threshold: 60
       strong-buy-score-threshold: 80

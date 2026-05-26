@@ -152,9 +152,9 @@ public class EmaSignalService implements SignalService {
                     String.format("+10pts | Volume ok %.2fx ≥ 1.0x", volRatio)));
         } else if (volRatio >= 0.7) {
             // ✅ Partial — tidak 0, tidak full
-            score += 3;
-            filters.add(SignalFilter.pass("VOLUME",
-                    String.format("+3pts | Volume below average %.2fx (caution)", volRatio)));
+            score += 0;
+            filters.add(SignalFilter.fail("VOLUME",
+                    String.format("+0pts | Volume below average %.2fx (0.7-1.0x caution)", volRatio)));
         } else {
             // ✅ Volume sangat rendah = signal tidak reliable
             score -= 5;  // ← Penalty! Kurangi score
@@ -168,21 +168,31 @@ public class EmaSignalService implements SignalService {
             score += 15;
             filters.add(SignalFilter.pass("RSI",
                     String.format("+15pts | RSI %.2f in sweet spot (40-60) ✅", rsi)));
-        } else if (rsi < rsiMaxThreshold) {
+        } else if (rsi < 65) {
             score += 10;
             filters.add(SignalFilter.pass("RSI",
-                    String.format("+10pts | RSI %.2f ok (< %.0f)", rsi, rsiMaxThreshold)));
+                    String.format("+10pts | RSI %.2f ok (< 65)", rsi)));
+        } else if (rsi < rsiMaxThreshold) {
+            score += 3;  // ← dikurangi dari 10 ke 3
+            filters.add(SignalFilter.pass("RSI",
+                    String.format("+3pts | RSI %.2f elevated (65-70) caution", rsi)));
         } else {
+            score -= 10; // ← penalty untuk overbought!
             filters.add(SignalFilter.fail("RSI",
-                    String.format("+0pts | RSI %.2f overbought (≥ %.0f)", rsi, rsiMaxThreshold)));
+                    String.format("-10pts | RSI %.2f overbought (≥ %.0f) ❌",
+                            rsi, rsiMaxThreshold)));
         }
 
         // S4: Volatility scoring
         String volZone = snapshot.getVolatilityZone();
-        if ("NORMAL".equals(volZone) || "LOW".equals(volZone)) {
+        if ("NORMAL".equals(volZone)) {
             score += 15;
             filters.add(SignalFilter.pass("VOLATILITY",
-                    String.format("+15pts | ATR %s ✅", volZone)));
+                    String.format("+15pts | ATR NORMAL ✅", volZone)));
+        } else if ("LOW".equals(volZone)) {
+            score += 0;  // tidak bonus, tidak penalty
+            filters.add(SignalFilter.fail("VOLATILITY",
+                    "+0pts | ATR LOW — ranging market, EMA less reliable"));
         } else {
             score += 5;
             filters.add(SignalFilter.pass("VOLATILITY",
@@ -274,15 +284,21 @@ public class EmaSignalService implements SignalService {
 
         // Di EmaSignalService — tambah scoring:
         int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
-        boolean isPeakHour = (currentHourUtc >= 0 && currentHourUtc < 21);
+        // ✅ Peak hours: Asia (1-4), London (8-12), NY (13-17)
+        boolean isPeakHour = (currentHourUtc >= 1 && currentHourUtc <= 4)
+                || (currentHourUtc >= 8 && currentHourUtc <= 12)
+                || (currentHourUtc >= 13 && currentHourUtc <= 17);
 
         if (isPeakHour) {
             score += 5;
             filters.add(SignalFilter.pass("PEAK_HOURS",
-                    String.format("+5pts | Trading in peak hours (UTC %d) ✅", currentHourUtc)));
+                    String.format("+5pts | Trading in peak hours (UTC %d) ✅",
+                            currentHourUtc)));
         } else {
+            score -= 5; // ← penalty dead hours
             filters.add(SignalFilter.fail("PEAK_HOURS",
-                    String.format("+0pts | Trading in dead hours (UTC %d)", currentHourUtc)));
+                    String.format("-5pts | Dead hours (UTC %d) — low liquidity ❌",
+                            currentHourUtc)));
         }
 
         score = Math.min(score, 100);
