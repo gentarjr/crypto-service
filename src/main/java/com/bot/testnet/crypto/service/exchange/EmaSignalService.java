@@ -1,10 +1,8 @@
 package com.bot.testnet.crypto.service.exchange;
 
-import com.bot.testnet.crypto.model.dto.Signal;
-import com.bot.testnet.crypto.model.dto.SignalAction;
-import com.bot.testnet.crypto.model.dto.SignalFilter;
-import com.bot.testnet.crypto.model.dto.StrategyType;
+import com.bot.testnet.crypto.model.dto.*;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
+import com.bot.testnet.crypto.service.indicator.CandlePatternHelper;
 import com.bot.testnet.crypto.service.indicator.MultiTimeframeService;
 import com.bot.testnet.crypto.service.indicator.SentimentService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +27,7 @@ public class EmaSignalService implements SignalService {
     private final CandleService candleService;
     private final BalanceService balanceService;
     private final SentimentService sentimentService;
+    private final CandlePatternHelper candlePatternHelper;
 
     // ─── Config ───────────────────────────────────────
     @Value("${trading.indicators.adx-trending-threshold:25}")
@@ -277,11 +276,6 @@ public class EmaSignalService implements SignalService {
                 filters.add(SignalFilter.fail("SENTIMENT", reason));
             }
         }
-
-        // ═══════════════════════════════════════
-        // DECISION
-        // ═══════════════════════════════════════
-
         // Di EmaSignalService — tambah scoring:
         int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
         // ✅ Peak hours: Asia (1-4), London (8-12), NY (13-17)
@@ -300,6 +294,44 @@ public class EmaSignalService implements SignalService {
                     String.format("-5pts | Dead hours (UTC %d) — low liquidity ❌",
                             currentHourUtc)));
         }
+
+        // S9: Candle Pattern Recognition
+        List<Candle> recentCandles = snapshot.getRecentCandles();
+        if (recentCandles != null && recentCandles.size() >= 2) {
+            if (recentCandles.size() >= 3
+                    && candlePatternHelper.isMorningStar(recentCandles)) {
+                score += 20;
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+20pts | Morning Star pattern ✅ (strong reversal)"));
+            } else if (candlePatternHelper.isBullishEngulfing(recentCandles)) {
+                score += 15;
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+15pts | Bullish Engulfing pattern ✅"));
+            } else if (candlePatternHelper.isHammer(recentCandles)) {
+                score += 10;
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+10pts | Hammer pattern ✅"));
+            } else if (candlePatternHelper.isStrongBearish(recentCandles)) {
+                score -= 15;
+                filters.add(SignalFilter.fail("CANDLE_PATTERN",
+                        "-15pts | Strong bearish candle ❌ — avoid buying"));
+            } else if (candlePatternHelper.isDoji(recentCandles)) {
+                score -= 5;
+                filters.add(SignalFilter.fail("CANDLE_PATTERN",
+                        "-5pts | Doji candle — market indecision"));
+            } else {
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+0pts | No significant pattern"));
+            }
+        } else {
+            filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                    "+0pts | No candle data available"));
+        }
+
+
+        // ═══════════════════════════════════════
+        // DECISION
+        // ═══════════════════════════════════════
 
         score = Math.min(score, 100);
         log.info("📊 [EMA] Score: {}/100 | Threshold: {}", score, buyScoreThreshold);

@@ -1,5 +1,6 @@
 package com.bot.testnet.crypto.model.response;
 
+import com.bot.testnet.crypto.model.dto.Candle;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -8,6 +9,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.List;
 
 @Data
 @Builder
@@ -56,6 +58,7 @@ public class GetIndicatorResponse {
     private String marketRegime;         // "RANGING", "TRANSITION", "TRENDING", "STRONG_TRENDING"
     private String preferredStrategy;    // "BB_MEAN_REVERSION", "NO_TRADE", "EMA_CROSSOVER"
 
+    private List<Candle> recentCandles;
 
     /**
      * Helper: gap antara EMA fast dan slow

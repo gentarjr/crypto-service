@@ -81,6 +81,12 @@ public class OrderExecutorService {
     @Value("${trading.hours.end-utc:21}")
     private int tradingHourEnd;
 
+    @Value("${trading.risk.partial-tp-enabled:true}")
+    private boolean partialTpEnabled;
+
+    @Value("${trading.risk.partial-tp-ratio:0.5}")
+    private double partialTpRatio;
+
     // ═══════════════════════════════════════════════════
     // State
     // ═══════════════════════════════════════════════════
@@ -588,6 +594,8 @@ public class OrderExecutorService {
 
         openPosition.updateHighestPrice(currentPrice);
 
+        checkPartialTakeProfit(currentPrice);
+
         if (openPosition.getOpenTime() != null) {
             long minutesOpen = Duration.between(
                     openPosition.getOpenTime(),
@@ -651,6 +659,7 @@ public class OrderExecutorService {
         if (!liveEnabled || openPosition == null) return;
 
         openPosition.updateHighestPrice(realtimePrice);
+        checkPartialTakeProfit(realtimePrice);
 
         log.info("📡 [LIVE] RT monitor: price=${} SL=${} TP={}",
                 realtimePrice,
@@ -693,6 +702,122 @@ public class OrderExecutorService {
                     openPosition.setLastOcoSL(openPosition.getStopLoss());
                 }
             }
+        }
+    }
+
+    /**
+     * Partial Take Profit:
+     * Saat harga mencapai 50% jarak ke TP → sell 50% posisi
+     * Sisa 50% tetap running dengan trailing SL
+     */
+    private void checkPartialTakeProfit(BigDecimal currentPrice) {
+        if (!partialTpEnabled) return;
+        if (openPosition == null) return;
+        if (openPosition.isPartialTpExecuted()) return;
+        if (openPosition.getTakeProfit() == null) return;
+
+        BigDecimal entry = openPosition.getEntryPrice();
+        BigDecimal tp    = openPosition.getTakeProfit();
+        BigDecimal tpDistance = tp.subtract(entry);
+        if (tpDistance.compareTo(BigDecimal.ZERO) <= 0) return;
+
+        BigDecimal partialTpLevel = entry.add(
+                tpDistance.multiply(BigDecimal.valueOf(partialTpRatio)));
+
+        if (currentPrice.compareTo(partialTpLevel) < 0) return;
+
+        // ✅ Pakai positionLock supaya tidak race condition
+        if (!positionLock.tryLock()) return; // kalau tidak bisa lock, skip
+        try {
+            // ✅ Double check setelah lock (Thread safety!)
+            if (openPosition == null) return;
+            if (openPosition.isPartialTpExecuted()) return;
+
+            // ✅ Set flag PERTAMA sebelum apapun
+            // Supaya thread lain tidak masuk
+            openPosition.setPartialTpExecuted(true);
+
+            log.info("🎯 [LIVE] Partial TP triggered: price=${} >= level=${}",
+                    currentPrice, partialTpLevel);
+
+            BigDecimal partialQty = openPosition.getQuantity()
+                    .multiply(BigDecimal.valueOf(partialTpRatio))
+                    .setScale(2, RoundingMode.DOWN);
+
+            if (partialQty.compareTo(new BigDecimal("0.01")) < 0) {
+                log.warn("⚠️ Partial TP qty too small: {} — skip", partialQty);
+                openPosition.setPartialTpExecuted(false); // reset flag
+                return;
+            }
+
+            try {
+                var sellResult = binanceSellService.placeMarketSellOrder(
+                        PostSellRequest.builder()
+                                .base(baseCurrency)
+                                .quote(quoteCurrency)
+                                .amount(partialQty)
+                                .build());
+
+                if ("FILLED".equals(sellResult.getStatus())) {
+                    // Update quantity remaining
+                    BigDecimal remainingQty = openPosition.getQuantity()
+                            .subtract(partialQty)
+                            .setScale(2, RoundingMode.DOWN);
+                    openPosition.setQuantity(remainingQty);
+
+                    // Hitung partial profit
+                    BigDecimal partialProfit = currentPrice
+                            .subtract(openPosition.getEntryPrice())
+                            .multiply(partialQty);
+                    BigDecimal partialFee = currentPrice.multiply(partialQty)
+                            .multiply(new BigDecimal("0.00075"));
+                    BigDecimal partialNetProfit = partialProfit.subtract(partialFee);
+
+                    openPosition.setPartialTpPrice(currentPrice);
+                    openPosition.setPartialTpQuantity(partialQty);
+                    openPosition.setPartialTpPnl(partialNetProfit);
+
+                    // Pindah SL ke breakeven + fee
+                    BigDecimal newSL = openPosition.getEntryPrice()
+                            .add(openPosition.getEntryPrice()
+                                    .multiply(new BigDecimal("0.002")))
+                            .setScale(2, RoundingMode.HALF_UP);
+                    openPosition.ratchetStopLoss(newSL);
+
+                    log.info("✅ Partial TP: sold {} BNB @ ${}, net profit=${}, " +
+                                    "remaining={} BNB, SL→${}",
+                            partialQty, currentPrice,
+                            partialNetProfit, remainingQty, newSL);
+
+                    telegramService.sendMessage(
+                            "🎯 [LIVE] Partial Take Profit!",
+                            String.format(
+                                    "Position #%s\n\n" +
+                                            "Sold: <b>%.2f BNB</b> @ <b>$%.2f</b>\n" +
+                                            "Profit: <b>+$%.4f</b>\n\n" +
+                                            "Remaining: <b>%.2f BNB</b>\n" +
+                                            "SL moved to: <b>$%.2f</b> (breakeven)\n" +
+                                            "TP target: <b>$%.2f</b>\n\n" +
+                                            "⏰ %s WIB",
+                                    openPosition.getId(),
+                                    partialQty.doubleValue(),
+                                    currentPrice.doubleValue(),
+                                    partialNetProfit.doubleValue(),
+                                    remainingQty.doubleValue(),
+                                    newSL.doubleValue(),
+                                    openPosition.getTakeProfit().doubleValue(),
+                                    formatTime()));
+                } else {
+                    // Sell gagal → reset flag supaya bisa retry
+                    log.error("❌ Partial TP sell failed: {}", sellResult.getStatus());
+                    openPosition.setPartialTpExecuted(false);
+                }
+            } catch (Exception e) {
+                log.error("❌ Partial TP error: {}", e.getMessage());
+                openPosition.setPartialTpExecuted(false); // reset flag
+            }
+        } finally {
+            positionLock.unlock();
         }
     }
 
@@ -929,13 +1054,30 @@ public class OrderExecutorService {
     private void updateCloseStats(LivePosition position,
                                   BigDecimal exitPrice,
                                   String reason) {
-        BigDecimal pnl = position.calculateUnrealizedPnl(exitPrice);
         BigDecimal feeRate = new BigDecimal("0.00075");
-        BigDecimal buyFee = position.getPositionValue().multiply(feeRate);
-        BigDecimal sellFee = exitPrice.multiply(position.getQuantity())
-                .multiply(feeRate);
+
+        // ✅ Hitung P&L untuk remaining quantity (bukan full quantity)
+        BigDecimal remainingQty = position.getQuantity();
+        BigDecimal pnl = exitPrice.subtract(position.getEntryPrice())
+                .multiply(remainingQty);
+
+        // ✅ Fee hanya untuk remaining sell (buy fee sudah diperhitungkan terpisah)
+        // Buy fee: proporsional dengan remaining qty
+        BigDecimal remainingValue = position.getEntryPrice().multiply(remainingQty);
+        BigDecimal buyFee  = remainingValue.multiply(feeRate);
+        BigDecimal sellFee = exitPrice.multiply(remainingQty).multiply(feeRate);
         BigDecimal totalFee = buyFee.add(sellFee);
         BigDecimal pnlAfterFee = pnl.subtract(totalFee);
+
+        // ✅ Tambah partial TP profit kalau ada
+        if (position.isPartialTpExecuted()
+                && position.getPartialTpPnl() != null) {
+            pnlAfterFee = pnlAfterFee.add(position.getPartialTpPnl());
+            log.info("📊 Including partial TP profit: ${}",
+                    position.getPartialTpPnl());
+        }
+
+        // ✅ P&L percent dari positionValue awal (bukan remaining)
         BigDecimal pnlPercent = position.getPositionValue()
                 .compareTo(BigDecimal.ZERO) > 0
                 ? pnlAfterFee.divide(position.getPositionValue(),
@@ -961,7 +1103,10 @@ public class OrderExecutorService {
                 ZoneId.of("Asia/Jakarta")).toInstant();
         closedPositions.add(position);
 
-        log.info("✅ [LIVE] Position CLOSED #{}: {} | net=${} ({}%)",
+        log.info("✅ [LIVE] Position CLOSED #{}: {} | net=${} ({}%)" +
+                        (position.isPartialTpExecuted()
+                                ? " [includes partial TP: $" + position.getPartialTpPnl() + "]"
+                                : ""),
                 position.getId(), reason,
                 String.format("%.4f", pnlAfterFee.doubleValue()),
                 String.format("%.2f", pnlPercent.doubleValue()));
@@ -1072,6 +1217,7 @@ public class OrderExecutorService {
 
         openPosition.updateHighestPrice(price);
         trailingStopHelper.update(openPosition, price, lastSnapshot.getAtr(), "LIVE-WS");
+        checkPartialTakeProfit(price);
     }
 
     private void updateOcoAfterTrailing(LivePosition position) {

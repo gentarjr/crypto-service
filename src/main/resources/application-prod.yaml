@@ -99,6 +99,8 @@ trading:
     max-consecutive-losses: 2     # dari 3
     cooldown-minutes: 60          # dari 30
     max-slippage-percent: 0.8     # dari 0.3
+    partial-tp-enabled: true
+    partial-tp-ratio: 0.5
 
   sentiment:
     enabled: true

@@ -25,6 +25,7 @@ import jakarta.annotation.PostConstruct;
 
 import java.math.BigDecimal;
 import java.time.ZoneId;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -292,6 +293,8 @@ public class CandleScheduler {
             }
 
             // Step 2: Evaluate signal (delegate ke AdaptiveSignalService)
+            List<Candle> recentCandles = candleCache.getLastNCandles(3);
+            snapshot.setRecentCandles(recentCandles);
             Signal signal = adaptiveSignalService.evaluate(snapshot);
             // Step 3: Log signal
             logSignal(signal);

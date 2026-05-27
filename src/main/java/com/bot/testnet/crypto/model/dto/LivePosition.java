@@ -51,6 +51,12 @@ public class LivePosition implements TrailablePosition {
     private BigDecimal pnlPercent;     // ✅ TAMBAH
     private String closeReason;
 
+    // ✅ TAMBAH — Partial TP tracking
+    private boolean partialTpExecuted;
+    private BigDecimal partialTpPrice;
+    private BigDecimal partialTpQuantity;
+    private BigDecimal partialTpPnl;
+
     // ─────────────────────────────────────────────
     // Helper Methods
     // ─────────────────────────────────────────────
