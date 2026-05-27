@@ -512,12 +512,13 @@ public class OrderExecutorService {
                         .openTime(ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant())
                         .build();
 
-                log.info("✅ [LIVE] Position OPENED #{}: entry=${}, qty={}, SL=${}, TP={}",
-                        openPosition.getId(),
-                        actualEntry,
-                        quantity,
-                        signal.getStopLoss(),
-                        signal.getTakeProfit() != null ? "$" + signal.getTakeProfit() : "TRAILING");
+                if (orderResult.getFilledAmount() != null
+                        && orderResult.getFilledAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    openPosition.setQuantity(
+                            orderResult.getFilledAmount().setScale(2, RoundingMode.DOWN));
+                    log.info("📐 Position qty updated to actual fill: {}",
+                            openPosition.getQuantity());
+                }
 
                 sendLivePositionOpenedNotif(openPosition);
                 if (signal.getTakeProfit() != null && signal.getStopLoss() != null) {
@@ -526,7 +527,7 @@ public class OrderExecutorService {
                                 OcoOrderRequest.builder()
                                         .base(baseCurrency)
                                         .quote(quoteCurrency)
-                                        .quantity(openPosition.getQuantity().setScale(2, RoundingMode.DOWN))
+                                        .quantity(getActualBnbForOco(openPosition.getQuantity()))
                                         .takeProfitPrice(adjustedTP.setScale(2, RoundingMode.HALF_UP))
                                         .stopLossPrice(adjustedSL.setScale(2, RoundingMode.DOWN))
                                         .build());
@@ -1228,7 +1229,18 @@ public class OrderExecutorService {
                     baseCurrency + quoteCurrency, oldOcoId);
             position.setOcoOrderListId(null);
 
-            BigDecimal ocoQty = position.getQuantity()
+            BigDecimal actualBnb;
+            try {
+                actualBnb = balanceService.getAvailableBnb();
+                if (actualBnb == null || actualBnb.compareTo(BigDecimal.ZERO) <= 0) {
+                    actualBnb = openPosition.getQuantity();
+                }
+            } catch (Exception e) {
+                actualBnb = openPosition.getQuantity();
+            }
+
+            BigDecimal ocoQty = actualBnb
+                    .multiply(new BigDecimal("0.999"))
                     .setScale(2, RoundingMode.DOWN);
             BigDecimal ocoTP  = position.getTakeProfit()
                     .setScale(2, RoundingMode.HALF_UP);
@@ -1259,5 +1271,22 @@ public class OrderExecutorService {
         } catch (Exception e) {
             log.error("❌ OCO update error: {}", e.getMessage());
         }
+    }
+
+    private BigDecimal getActualBnbForOco(BigDecimal fallback) {
+        try {
+            BigDecimal actual = balanceService.getAvailableBnb();
+            if (actual != null && actual.compareTo(new BigDecimal("0.01")) > 0) {
+                BigDecimal qty = actual
+                        .multiply(new BigDecimal("0.999")) // buffer fee
+                        .setScale(2, RoundingMode.DOWN);
+                log.info("📋 OCO qty from actual balance: {} (fallback: {})",
+                        qty, fallback);
+                return qty;
+            }
+        } catch (Exception e) {
+            log.warn("Cannot fetch BNB for OCO, using position qty: {}", e.getMessage());
+        }
+        return fallback.setScale(2, RoundingMode.DOWN);
     }
 }
