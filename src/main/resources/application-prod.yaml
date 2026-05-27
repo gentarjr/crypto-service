@@ -86,7 +86,7 @@ trading:
       volume-min-multiplier: 0.5
       percent-b-min: -0.1
       sl-atr-multiplier: 1.0
-      tp-atr-multiplier: 1.0
+      tp-atr-multiplier: 1.5
 
   risk:
     modal: 300                  # fallback kalau tidak bisa fetch balance

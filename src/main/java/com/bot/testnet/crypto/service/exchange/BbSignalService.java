@@ -1,10 +1,8 @@
 package com.bot.testnet.crypto.service.exchange;
 
-import com.bot.testnet.crypto.model.dto.Signal;
-import com.bot.testnet.crypto.model.dto.SignalAction;
-import com.bot.testnet.crypto.model.dto.SignalFilter;
-import com.bot.testnet.crypto.model.dto.StrategyType;
+import com.bot.testnet.crypto.model.dto.*;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
+import com.bot.testnet.crypto.service.indicator.CandlePatternHelper;
 import com.bot.testnet.crypto.service.indicator.SentimentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -24,6 +22,7 @@ import java.util.List;
 public class BbSignalService implements SignalService {
     private final BalanceService balanceService;
     private final SentimentService sentimentService;
+    private final CandlePatternHelper candlePatternHelper;
 
     @Value("${trading.indicators.adx-ranging-threshold:20}")
     private double adxRangingThreshold;
@@ -271,6 +270,39 @@ public class BbSignalService implements SignalService {
             }
         }
 
+        // S9: Candle Pattern Recognition
+        List<Candle> recentCandles = snapshot.getRecentCandles();
+        if (recentCandles != null && recentCandles.size() >= 2) {
+            if (recentCandles.size() >= 3
+                    && candlePatternHelper.isMorningStar(recentCandles)) {
+                score += 20;
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+20pts | Morning Star pattern ✅ (strong reversal)"));
+            } else if (candlePatternHelper.isBullishEngulfing(recentCandles)) {
+                score += 15;
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+15pts | Bullish Engulfing pattern ✅"));
+            } else if (candlePatternHelper.isHammer(recentCandles)) {
+                score += 10;
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+10pts | Hammer pattern ✅"));
+            } else if (candlePatternHelper.isStrongBearish(recentCandles)) {
+                score -= 15;
+                filters.add(SignalFilter.fail("CANDLE_PATTERN",
+                        "-15pts | Strong bearish candle ❌"));
+            } else if (candlePatternHelper.isDoji(recentCandles)) {
+                score -= 5;
+                filters.add(SignalFilter.fail("CANDLE_PATTERN",
+                        "-5pts | Doji — market indecision"));
+            } else {
+                filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                        "+0pts | No significant pattern"));
+            }
+        } else {
+            filters.add(SignalFilter.pass("CANDLE_PATTERN",
+                    "+0pts | No candle data"));
+        }
+
         // ═══════════════════════════════════════
         // DECISION
         // ═══════════════════════════════════════
@@ -318,6 +350,24 @@ public class BbSignalService implements SignalService {
         BigDecimal rrRatio = BigDecimal.ZERO;
         if (slDistance.compareTo(BigDecimal.ZERO) > 0) {
             rrRatio = tpDistance.divide(slDistance, 2, RoundingMode.HALF_UP);
+            BigDecimal feeTotal    = new BigDecimal("0.0015");
+            BigDecimal tpPct       = takeProfit.subtract(price)
+                    .divide(price, 6, RoundingMode.HALF_UP);
+            BigDecimal slPct       = price.subtract(stopLoss).abs()
+                    .divide(price, 6, RoundingMode.HALF_UP);
+            BigDecimal netTpPct    = tpPct.subtract(feeTotal);
+            BigDecimal netSlPct    = slPct.add(feeTotal);
+            BigDecimal rrAfterFee  = netSlPct.compareTo(BigDecimal.ZERO) > 0
+                    ? netTpPct.divide(netSlPct, 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+
+            if (rrAfterFee.compareTo(BigDecimal.ONE) < 0) {
+                filters.add(SignalFilter.fail("RR_TOO_LOW",
+                        String.format("+0pts | R:R after fee %.2f < 1.0 — skip ❌",
+                                rrAfterFee.doubleValue())));
+                return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                        "R:R after fee too low: " + rrAfterFee, filters);
+            }
         }
 
         BigDecimal availableCapital;
