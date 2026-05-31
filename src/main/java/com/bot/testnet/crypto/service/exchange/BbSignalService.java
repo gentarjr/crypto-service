@@ -303,6 +303,52 @@ public class BbSignalService implements SignalService {
                     "+0pts | No candle data"));
         }
 
+        // S10: Falling Knife Memory — cek 3 candle terakhir
+        // Kalau 2 dari 3 candle terakhir bearish kuat = masih falling knife
+        if (recentCandles != null && recentCandles.size() >= 3) {
+            long bearishCount = recentCandles.stream()
+                    .filter(c -> c.isBearish()
+                            && c.getRange().compareTo(BigDecimal.ZERO) > 0
+                            && c.getBodySize()
+                            .divide(c.getRange(), 4, RoundingMode.HALF_UP)
+                            .compareTo(new BigDecimal("0.60")) > 0)
+                    .count();
+
+            if (bearishCount >= 2) {
+                filters.add(SignalFilter.fail("FALLING_KNIFE_MEMORY",
+                        String.format("+0pts | %d/3 candles strongly bearish — wait for stabilization ❌",
+                                bearishCount)));
+                return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                        "Recent falling knife — skip", filters);
+            } else {
+                filters.add(SignalFilter.pass("FALLING_KNIFE_MEMORY",
+                        String.format("+0pts | Candle stability ok (%d/3 bearish)",
+                                bearishCount)));
+            }
+        }
+
+        if (recentCandles != null && recentCandles.size() >= 2) {
+            BigDecimal lastClose = recentCandles
+                    .get(recentCandles.size() - 1).getClose();
+            BigDecimal prevClose = recentCandles
+                    .get(recentCandles.size() - 2).getClose();
+
+            if (lastClose.compareTo(prevClose) > 0) {
+                score += 10;
+                filters.add(SignalFilter.pass("PRICE_MOMENTUM",
+                        String.format("+10pts | Price momentum UP $%.2f → $%.2f ✅",
+                                prevClose.doubleValue(), lastClose.doubleValue())));
+            } else if (lastClose.compareTo(prevClose) < 0) {
+                score -= 10;
+                filters.add(SignalFilter.fail("PRICE_MOMENTUM",
+                        String.format("-10pts | Price momentum DOWN $%.2f → $%.2f ❌",
+                                prevClose.doubleValue(), lastClose.doubleValue())));
+            } else {
+                filters.add(SignalFilter.pass("PRICE_MOMENTUM",
+                        "+0pts | Price flat"));
+            }
+        }
+
         // ═══════════════════════════════════════
         // DECISION
         // ═══════════════════════════════════════
