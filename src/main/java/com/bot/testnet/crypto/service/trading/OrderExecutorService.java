@@ -219,6 +219,13 @@ public class OrderExecutorService {
         return isCooldownActive();
     }
 
+    public int getEffectiveCooldownMinutes() {
+        // Return cooldown sesuai strategy terakhir
+        return (lastCloseStrategy == StrategyType.BB_MEAN_REVERSION)
+                ? bbCooldownMinutes
+                : cooldownMinutes;
+    }
+
     public int getCooldownRemainingMinutes() {
         if (lastCloseTime == null) return 0;
 
