@@ -86,6 +86,9 @@ trading:
       atr-extreme-multiplier: 2.5
       buy-score-threshold: 65
       strong-buy-score-threshold: 85
+      pullback-enabled: true
+      pullback-tolerance-percent: 0.3  # max 0.3% dari EMA9
+      pullback-max-candles: 3
     bb:
       buy-score-threshold: 60
       strong-buy-score-threshold: 80
@@ -97,9 +100,11 @@ trading:
       tp-atr-multiplier: 1.5
 
   risk:
+    timeout-hours: 4              # default timeout
+    timeout-profit-threshold: 0.5
     modal: 300                  # fallback kalau tidak bisa fetch balance
-    sl-atr-multiplier: 1.5
-    tp-atr-multiplier: 3.0
+    sl-atr-multiplier: 2.0
+    tp-atr-multiplier: 3.5
     max-position-percent: 90.0  # max 90% balance per posisi
     trailing-atr-multiplier: 1.5
     risk-per-trade-percent: 0.5   # dari 1.0

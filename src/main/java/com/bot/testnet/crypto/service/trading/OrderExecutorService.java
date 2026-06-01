@@ -93,6 +93,12 @@ public class OrderExecutorService {
     @Value("${trading.risk.bb-cooldown-minutes:30}")
     private int bbCooldownMinutes;
 
+    @Value("${trading.risk.timeout-hours:4}")
+    private int timeoutHours;
+
+    @Value("${trading.risk.timeout-profit-threshold:0.5}")
+    private double timeoutProfitThreshold;
+
     // ═══════════════════════════════════════════════════
     // State
     // ═══════════════════════════════════════════════════
@@ -636,18 +642,33 @@ public class OrderExecutorService {
                     openPosition.getOpenTime(),
                     Instant.now()).toMinutes();
 
-            if (minutesOpen > 240 && !openPosition.isTrailingActive()) {
-                log.warn("⏰ [LIVE] Position #{} stagnant for {}m without progress, force close",
-                        openPosition.getId(), minutesOpen);
-                telegramService.sendMessage(
-                        "⏰ [LIVE] Force Close — Stagnant Position",
-                        String.format(
-                                "Position #%s open %d minutes without trailing activation\n" +
-                                        "No progress → closing at market price\n" +
-                                        "⏰ %s WIB",
-                                openPosition.getId(), minutesOpen, formatTime()));
-                closeLivePosition(currentPrice, "TIMEOUT_NO_PROGRESS");
-                return;
+            if (minutesOpen > (timeoutHours * 60)) {
+                BigDecimal unrealized = currentPrice
+                        .subtract(openPosition.getEntryPrice())
+                        .multiply(openPosition.getQuantity());
+                BigDecimal profitPct = openPosition.getPositionValue()
+                        .compareTo(BigDecimal.ZERO) > 0
+                        ? unrealized.divide(openPosition.getPositionValue(),
+                                6, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
+                        : BigDecimal.ZERO;
+
+                if (profitPct.doubleValue() >= timeoutProfitThreshold) {
+                    log.info("⏰ [LIVE] Position #{} timeout reached BUT profit {}% >= {}% threshold — skip timeout",
+                            openPosition.getId(),
+                            String.format("%.2f", profitPct.doubleValue()),
+                            timeoutProfitThreshold);
+                } else if (!openPosition.isTrailingActive()) {
+                    log.warn("⏰ [LIVE] Position #{} stagnant {}m, profit {}% < {}% — force close",
+                            openPosition.getId(), minutesOpen,
+                            String.format("%.2f", profitPct.doubleValue()),
+                            timeoutProfitThreshold);
+                    closeLivePosition(currentPrice, "TIMEOUT_NO_PROGRESS");
+                    return;
+                } else {
+                    log.info("⏰ [LIVE] Position #{} timeout reached but trailing active — skip timeout",
+                            openPosition.getId());
+                }
             }
         }
 

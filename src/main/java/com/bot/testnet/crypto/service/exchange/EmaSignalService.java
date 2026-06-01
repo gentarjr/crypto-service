@@ -328,6 +328,37 @@ public class EmaSignalService implements SignalService {
                     "+0pts | No candle data available"));
         }
 
+        // S12: Anti-Whipsaw — EMA9 harus di atas EMA21
+        BigDecimal emaFast = snapshot.getEmaFast(); // EMA9
+        BigDecimal emaSlowVal = snapshot.getEmaSlow(); // EMA21
+
+        if (emaFast != null && emaSlowVal != null
+                && emaSlowVal.compareTo(BigDecimal.ZERO) > 0) {
+
+            BigDecimal emaSpread = emaFast.subtract(emaSlowVal);
+            BigDecimal minSpread = emaSlowVal
+                    .multiply(new BigDecimal("0.001")); // 0.1% dari EMA21
+
+            if (emaSpread.compareTo(minSpread) < 0) {
+                score -= 15;
+                filters.add(SignalFilter.fail("ANTI_WHIPSAW",
+                        String.format("-15pts | EMA spread too thin ($%.4f < $%.4f) — whipsaw risk ❌",
+                                emaSpread.doubleValue(),
+                                minSpread.doubleValue())));
+            } else if (emaSpread.compareTo(minSpread.multiply(new BigDecimal("2"))) > 0) {
+                score += 10;
+                filters.add(SignalFilter.pass("ANTI_WHIPSAW",
+                        String.format("+10pts | EMA spread confirmed ($%.4f) — trend established ✅",
+                                emaSpread.doubleValue())));
+            } else {
+                filters.add(SignalFilter.pass("ANTI_WHIPSAW",
+                        String.format("+0pts | EMA spread ok ($%.4f)",
+                                emaSpread.doubleValue())));
+            }
+        } else {
+            filters.add(SignalFilter.pass("ANTI_WHIPSAW",
+                    "+0pts | No EMA data"));
+        }
 
         // ═══════════════════════════════════════
         // DECISION
