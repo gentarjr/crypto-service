@@ -6,6 +6,7 @@ import com.bot.testnet.crypto.repository.TradeHistoryRepository;
 import com.bot.testnet.crypto.service.trading.OrderExecutorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,6 +24,9 @@ import java.util.Map;
 @Log4j2
 public class LiveTradingController {
 
+    @Value("${trading.risk.cooldown-minutes:60}")
+    private int cooldownMinutes;
+
     private final OrderExecutorService orderExecutorService;
     private final TradeHistoryRepository tradeHistoryRepository;
 
@@ -33,7 +37,12 @@ public class LiveTradingController {
                 "enabled", orderExecutorService.isEnabled(),
                 "halted", orderExecutorService.isHalted(),
                 "openPosition", pos != null ? pos : "none",
-                "closedCount", orderExecutorService.getClosedPositions().size()
+                "closedCount", orderExecutorService.getClosedPositions().size(),
+                "lastCloseTime", orderExecutorService.getLastCloseTime() != null
+                        ? orderExecutorService.getLastCloseTime().toString() : null,
+                "cooldownMinutes", cooldownMinutes,
+                "inCooldown", orderExecutorService.isInCooldown(),
+                "cooldownRemainingMinutes", orderExecutorService.getCooldownRemainingMinutes()
         );
     }
 

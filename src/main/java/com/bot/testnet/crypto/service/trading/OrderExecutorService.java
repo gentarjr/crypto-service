@@ -90,6 +90,9 @@ public class OrderExecutorService {
     @Value("${trading.risk.partial-tp-ratio:0.5}")
     private double partialTpRatio;
 
+    @Value("${trading.risk.bb-cooldown-minutes:30}")
+    private int bbCooldownMinutes;
+
     // ═══════════════════════════════════════════════════
     // State
     // ═══════════════════════════════════════════════════
@@ -103,6 +106,7 @@ public class OrderExecutorService {
     private int consecutiveLosses = 0;
     private boolean dailyHalted = false;
     private Instant lastCloseTime = null;
+    private StrategyType lastCloseStrategy = null;
     private GetIndicatorResponse lastSnapshot = null;
 
 
@@ -205,6 +209,26 @@ public class OrderExecutorService {
      */
     public boolean isHalted() {
         return dailyHalted;
+    }
+
+    public Instant getLastCloseTime() {
+        return lastCloseTime;
+    }
+
+    public boolean isInCooldown() {
+        return isCooldownActive();
+    }
+
+    public int getCooldownRemainingMinutes() {
+        if (lastCloseTime == null) return 0;
+
+        int minutes = (lastCloseStrategy == StrategyType.BB_MEAN_REVERSION)
+                ? bbCooldownMinutes
+                : cooldownMinutes;
+
+        Instant cooldownEnd = lastCloseTime.plus(Duration.ofMinutes(minutes));
+        long remaining = Duration.between(Instant.now(), cooldownEnd).getSeconds();
+        return remaining > 0 ? (int) Math.ceil(remaining / 60.0) : 0;
     }
 
     // ✅ TAMBAH 3 GETTER INI:
@@ -962,12 +986,18 @@ public class OrderExecutorService {
 
     private boolean isCooldownActive() {
         if (lastCloseTime == null) return false;
-        Instant cooldownEnd = lastCloseTime.plus(Duration.ofMinutes(cooldownMinutes));
+
+        // ✅ BB pakai cooldown lebih pendek
+        int minutes = (lastCloseStrategy == StrategyType.BB_MEAN_REVERSION)
+                ? bbCooldownMinutes
+                : cooldownMinutes;
+
+        Instant cooldownEnd = lastCloseTime.plus(Duration.ofMinutes(minutes));
         boolean active = Instant.now().isBefore(cooldownEnd);
         if (active) {
             long remaining = Duration.between(Instant.now(), cooldownEnd).getSeconds();
-            log.info("⏳ [LIVE] Cooldown: {}m {}s remaining",
-                    remaining / 60, remaining % 60);
+            log.info("⏳ [LIVE] Cooldown ({}): {}m {}s remaining",
+                    lastCloseStrategy, remaining / 60, remaining % 60);
         }
         return active;
     }
@@ -1105,6 +1135,7 @@ public class OrderExecutorService {
         consecutiveLosses = isWin ? 0 : consecutiveLosses + 1;
         lastCloseTime = ZonedDateTime.now(
                 ZoneId.of("Asia/Jakarta")).toInstant();
+        lastCloseStrategy = position.getStrategy();
         closedPositions.add(position);
 
         log.info("✅ [LIVE] Position CLOSED #{}: {} | net=${} ({}%)" +
