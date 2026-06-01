@@ -57,6 +57,9 @@ public class GetIndicatorResponse {
     private BigDecimal minusDI;          // -DI
     private String marketRegime;         // "RANGING", "TRANSITION", "TRENDING", "STRONG_TRENDING"
     private String preferredStrategy;    // "BB_MEAN_REVERSION", "NO_TRADE", "EMA_CROSSOVER"
+    private BigDecimal ema50_4H;       // EMA50 dari 4H candle
+    private String trend4H;             // "BULLISH" atau "BEARISH"
+    private BigDecimal currentPrice4H;  // harga close 4H terakhir
 
     private List<Candle> recentCandles;
 

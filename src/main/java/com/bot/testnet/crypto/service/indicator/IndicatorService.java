@@ -447,4 +447,19 @@ public class IndicatorService {
             log.info("   ⏸️  TRANSITION ZONE — NO TRADE (uncertain regime)");
         }
     }
+
+    public BigDecimal getEma50_4H(List<Candle> candles4h) {
+        if (candles4h == null || candles4h.size() < 50) return null;
+
+        // Simple EMA calculation
+        BigDecimal multiplier = BigDecimal.valueOf(2.0 / (50 + 1));
+        BigDecimal ema = candles4h.get(0).getClose();
+
+        for (int i = 1; i < candles4h.size(); i++) {
+            BigDecimal close = candles4h.get(i).getClose();
+            ema = close.multiply(multiplier)
+                    .add(ema.multiply(BigDecimal.ONE.subtract(multiplier)));
+        }
+        return ema;
+    }
 }

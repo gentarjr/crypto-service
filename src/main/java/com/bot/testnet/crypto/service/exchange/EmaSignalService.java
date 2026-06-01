@@ -360,6 +360,73 @@ public class EmaSignalService implements SignalService {
                     "+0pts | No EMA data"));
         }
 
+        // S13: Pullback Entry Quality
+        BigDecimal emaFastPb = snapshot.getEmaFast();
+        BigDecimal pricePb   = snapshot.getCurrentPrice();
+
+        if (emaFastPb != null && pricePb != null
+                && emaFastPb.compareTo(BigDecimal.ZERO) > 0) {
+
+            BigDecimal distFromEma9 = pricePb.subtract(emaFastPb)
+                    .abs()
+                    .divide(emaFastPb, 6, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100));
+
+            if (distFromEma9.compareTo(new BigDecimal("0.3")) <= 0) {
+                // ✅ Harga sangat dekat EMA9 = ideal pullback entry!
+                score += 15;
+                filters.add(SignalFilter.pass("PULLBACK_ENTRY",
+                        String.format("+15pts | Price near EMA9 (%.2f%% away) — ideal pullback ✅",
+                                distFromEma9.doubleValue())));
+            } else if (distFromEma9.compareTo(new BigDecimal("0.8")) <= 0) {
+                // ✅ Masih acceptable
+                score += 5;
+                filters.add(SignalFilter.pass("PULLBACK_ENTRY",
+                        String.format("+5pts | Price close to EMA9 (%.2f%% away) — ok",
+                                distFromEma9.doubleValue())));
+            } else if (distFromEma9.compareTo(new BigDecimal("1.5")) <= 0) {
+                // ⚠️ Agak jauh
+                score += 0;
+                filters.add(SignalFilter.fail("PULLBACK_ENTRY",
+                        String.format("+0pts | Price %.2f%% from EMA9 — extended",
+                                distFromEma9.doubleValue())));
+            } else {
+                // ❌ Terlalu jauh dari EMA9 = chasing price!
+                score -= 10;
+                filters.add(SignalFilter.fail("PULLBACK_ENTRY",
+                        String.format("-10pts | Price too far from EMA9 (%.2f%%) — chasing price ❌",
+                                distFromEma9.doubleValue())));
+            }
+        } else {
+            filters.add(SignalFilter.pass("PULLBACK_ENTRY",
+                    "+0pts | No EMA9 data"));
+        }
+
+        // S14: 4H Timeframe Confirmation
+// Macro trend harus bullish sebelum entry EMA
+// Mencegah beli di downtrend besar
+        String trend4H = snapshot.getTrend4H();
+
+        if (trend4H != null) {
+            if ("BULLISH".equals(trend4H)) {
+                score += 20;
+                filters.add(SignalFilter.pass("MTA_4H",
+                        String.format("+20pts | 4H BULLISH (above EMA50 $%.4f) ✅",
+                                snapshot.getEma50_4H() != null
+                                        ? snapshot.getEma50_4H().doubleValue() : 0)));
+            } else {
+                score -= 20;
+                filters.add(SignalFilter.fail("MTA_4H",
+                        String.format("-20pts | 4H BEARISH (below EMA50 $%.4f) ❌ — avoid buying in downtrend",
+                                snapshot.getEma50_4H() != null
+                                        ? snapshot.getEma50_4H().doubleValue() : 0)));
+            }
+        } else {
+            // 4H data tidak tersedia → skip filter, tidak penalty
+            filters.add(SignalFilter.pass("MTA_4H",
+                    "+0pts | 4H data not available"));
+        }
+
         // ═══════════════════════════════════════
         // DECISION
         // ═══════════════════════════════════════

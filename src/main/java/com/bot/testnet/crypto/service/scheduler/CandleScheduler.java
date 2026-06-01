@@ -292,6 +292,32 @@ public class CandleScheduler {
                 return;
             }
 
+            // ✅ Tambah fetch 4H data
+            try {
+                GetCandleResponse candles4H = candleService.getCandles4H(
+                        baseCurrency, quoteCurrency);
+
+                if (candles4H != null && candles4H.getCandle() != null
+                        && !candles4H.getCandle().isEmpty()) {
+                    BigDecimal ema50_4H = indicatorService.getEma50_4H(
+                            candles4H.getCandle());
+                    BigDecimal lastClose4H = candles4H.getCandle()
+                            .get(candles4H.getCandle().size() - 1).getClose();
+
+                    snapshot.setEma50_4H(ema50_4H);
+                    snapshot.setCurrentPrice4H(lastClose4H);
+                    if (ema50_4H != null) {
+                        snapshot.setTrend4H(lastClose4H.compareTo(ema50_4H) > 0
+                                ? "BULLISH" : "BEARISH");
+                    } else {
+                        log.warn("⚠️ 4H EMA50 null (not enough candles), skipping trend4H");
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ Cannot fetch 4H data: {}", e.getMessage());
+                // Tidak fatal, lanjut tanpa 4H filter
+            }
+
             // Step 2: Evaluate signal (delegate ke AdaptiveSignalService)
             List<Candle> recentCandles = candleCache.getLastNCandles(3);
             snapshot.setRecentCandles(recentCandles);

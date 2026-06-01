@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.knowm.xchange.Exchange;
 import org.knowm.xchange.binance.dto.marketdata.BinanceKline;
+import org.knowm.xchange.binance.dto.marketdata.KlineInterval;
 import org.knowm.xchange.binance.service.BinanceMarketDataService;
 import org.knowm.xchange.currency.CurrencyPair;
 import org.springframework.stereotype.Service;
@@ -77,6 +78,17 @@ public class CandleService {
                         .quote(request.getQuote())
                         .interval(request.getInterval())
                         .limit(request.getLimit())
+                        .build());
+    }
+
+    public GetCandleResponse getCandles4H(String base, String quote) throws Exception {
+        log.info("📊 Fetching 4H candles for {}/{}", base, quote);
+        return fetchCandles(
+                GetCandleRequest.builder()
+                        .base(base)
+                        .quote(quote)
+                        .interval(KlineInterval.h4) // ← enum value yang benar
+                        .limit(50)
                         .build());
     }
 }
