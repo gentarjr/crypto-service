@@ -33,17 +33,19 @@ public class LiveTradingController {
     @GetMapping("/status")
     public Map<String, Object> status() {
         LivePosition pos = orderExecutorService.getOpenPosition();
-        return Map.of(
-                "enabled", orderExecutorService.isEnabled(),
-                "halted", orderExecutorService.isHalted(),
-                "openPosition", pos != null ? pos : "none",
-                "closedCount", orderExecutorService.getClosedPositions().size(),
-                "lastCloseTime", orderExecutorService.getLastCloseTime() != null
-                        ? orderExecutorService.getLastCloseTime().toString() : null,
-                "cooldownMinutes", cooldownMinutes,
-                "inCooldown", orderExecutorService.isInCooldown(),
-                "cooldownRemainingMinutes", orderExecutorService.getCooldownRemainingMinutes()
-        );
+
+        // ✅ Pakai LinkedHashMap karena Map.of() tidak support null value
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("enabled", orderExecutorService.isEnabled());
+        result.put("halted", orderExecutorService.isHalted());
+        result.put("openPosition", pos != null ? pos : "none");
+        result.put("closedCount", orderExecutorService.getClosedPositions().size());
+        result.put("lastCloseTime", orderExecutorService.getLastCloseTime() != null
+                ? orderExecutorService.getLastCloseTime().toString() : null);
+        result.put("cooldownMinutes", cooldownMinutes);
+        result.put("inCooldown", orderExecutorService.isInCooldown());
+        result.put("cooldownRemainingMinutes", orderExecutorService.getCooldownRemainingMinutes());
+        return result;
     }
 
     @GetMapping("/positions")
