@@ -402,7 +402,7 @@ public class OrderExecutorService {
 
             BigDecimal adjustedQuantity = positionSize
                     .divide(limitPrice, 6, RoundingMode.HALF_UP)
-                    .setScale(2, RoundingMode.DOWN);
+                    .setScale(3, RoundingMode.DOWN);
 
             log.info("📐 Quantity adjusted for limit price: {} → {} BNB (limitPrice=${})",
                     quantity, adjustedQuantity, limitPrice);
@@ -488,8 +488,8 @@ public class OrderExecutorService {
                                 formatTime()));
                 try {
                     BigDecimal sellAmt = orderResult.getFilledAmount() != null
-                            ? orderResult.getFilledAmount().setScale(2, RoundingMode.DOWN)
-                            : quantity.setScale(2, RoundingMode.DOWN);
+                            ? orderResult.getFilledAmount().setScale(3, RoundingMode.DOWN)
+                            : quantity.setScale(3, RoundingMode.DOWN);
                     binanceSellService.placeMarketSellOrder(
                             PostSellRequest.builder()
                                     .base(baseCurrency)
@@ -798,9 +798,9 @@ public class OrderExecutorService {
 
             BigDecimal partialQty = openPosition.getQuantity()
                     .multiply(BigDecimal.valueOf(partialTpRatio))
-                    .setScale(2, RoundingMode.DOWN);
+                    .setScale(3, RoundingMode.DOWN);
 
-            if (partialQty.compareTo(new BigDecimal("0.01")) < 0) {
+            if (partialQty.compareTo(new BigDecimal("0.001")) < 0) {
                 log.warn("⚠️ Partial TP qty too small: {} — skip", partialQty);
                 openPosition.setPartialTpExecuted(false); // reset flag
                 return;
@@ -818,7 +818,7 @@ public class OrderExecutorService {
                     // Update quantity remaining
                     BigDecimal remainingQty = openPosition.getQuantity()
                             .subtract(partialQty)
-                            .setScale(2, RoundingMode.DOWN);
+                            .setScale(3, RoundingMode.DOWN);
                     openPosition.setQuantity(remainingQty);
 
                     // Hitung partial profit
@@ -934,14 +934,15 @@ public class OrderExecutorService {
             // BNB masih ada → SELL manual
             try {
                 BigDecimal feeBuffer = actualBnbBalance
-                        .multiply(new BigDecimal("0.00075"))
+                        .multiply(new BigDecimal("0.001")) // 0.1% buffer
                         .setScale(4, RoundingMode.UP);
                 BigDecimal sellAmount = actualBnbBalance
                         .subtract(feeBuffer)
-                        .setScale(2, RoundingMode.DOWN);
-                BigDecimal minQty = new BigDecimal("0.01");
+                        .setScale(3, RoundingMode.DOWN);
+
+                BigDecimal minQty = new BigDecimal("0.001");
                 if (sellAmount.compareTo(minQty) < 0) {
-                    sellAmount = minQty;
+                    sellAmount = actualBnbBalance.setScale(3, RoundingMode.DOWN);
                 }
 
                 log.info("💰 Sell amount: {} BNB (balance: {}, fee buffer: {})",
@@ -1269,7 +1270,7 @@ public class OrderExecutorService {
     private BigDecimal roundQuantity(BigDecimal quantity) {
         // BNB minimum order: 0.01 BNB, step size: 0.01
         // Selalu round DOWN supaya tidak exceed balance
-        return quantity.setScale(2, RoundingMode.DOWN);
+        return quantity.setScale(3, RoundingMode.DOWN);
     }
 
     private boolean isQuantitySufficient(BigDecimal quantity) {
@@ -1336,7 +1337,7 @@ public class OrderExecutorService {
 
             BigDecimal ocoQty = actualBnb
                     .multiply(new BigDecimal("0.999"))
-                    .setScale(2, RoundingMode.DOWN);
+                    .setScale(3, RoundingMode.DOWN);
             BigDecimal ocoTP  = position.getTakeProfit()
                     .setScale(2, RoundingMode.HALF_UP);
             BigDecimal ocoSL  = position.getStopLoss()
@@ -1373,8 +1374,8 @@ public class OrderExecutorService {
             BigDecimal actual = balanceService.getAvailableBnb();
             if (actual != null && actual.compareTo(new BigDecimal("0.01")) > 0) {
                 BigDecimal qty = actual
-                        .multiply(new BigDecimal("0.999")) // buffer fee
-                        .setScale(2, RoundingMode.DOWN);
+                        .multiply(new BigDecimal("0.999"))
+                        .setScale(3, RoundingMode.DOWN);
                 log.info("📋 OCO qty from actual balance: {} (fallback: {})",
                         qty, fallback);
                 return qty;
@@ -1382,6 +1383,6 @@ public class OrderExecutorService {
         } catch (Exception e) {
             log.warn("Cannot fetch BNB for OCO, using position qty: {}", e.getMessage());
         }
-        return fallback.setScale(2, RoundingMode.DOWN);
+        return fallback.setScale(3, RoundingMode.DOWN);
     }
 }
