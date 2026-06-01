@@ -3,12 +3,14 @@ package com.bot.testnet.crypto.service.trading;
 import com.bot.testnet.crypto.model.LivePosition;
 import com.bot.testnet.crypto.model.dto.Signal;
 import com.bot.testnet.crypto.model.dto.StrategyType;
+import com.bot.testnet.crypto.model.entity.TradeHistory;
 import com.bot.testnet.crypto.model.request.GetCurrentPriceRequest;
 import com.bot.testnet.crypto.model.request.OcoOrderRequest;
 import com.bot.testnet.crypto.model.request.PostBuyRequest;
 import com.bot.testnet.crypto.model.request.PostSellRequest;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.model.response.OcoOrderResponse;
+import com.bot.testnet.crypto.repository.TradeHistoryRepository;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
 import com.bot.testnet.crypto.service.exchange.*;
 import com.bot.testnet.crypto.service.risk.TrailingStopHelper;
@@ -47,6 +49,7 @@ public class OrderExecutorService {
     private final TrailingStopHelper trailingStopHelper;
     private final BalanceService balanceService;
     private final BinanceOcoService binanceOcoService;
+    private final TradeHistoryRepository tradeHistoryRepository;
 
     @Value("${trading.live.enabled:false}")
     private boolean liveEnabled;
@@ -1113,6 +1116,39 @@ public class OrderExecutorService {
                 String.format("%.2f", pnlPercent.doubleValue()));
 
         sendLivePositionClosedNotif(position);
+
+        // ✅ Simpan ke H2 database
+        try {
+            long durationMin = position.getOpenTime() != null
+                    ? java.time.Duration.between(
+                    position.getOpenTime(),
+                    Instant.now()).toMinutes()
+                    : 0;
+
+            TradeHistory history = TradeHistory.builder()
+                    .id(position.getId())
+                    .strategy(position.getStrategy() != null
+                            ? position.getStrategy().name() : "UNKNOWN")
+                    .entryPrice(position.getEntryPrice())
+                    .closePrice(exitPrice)
+                    .quantity(position.getQuantity())
+                    .positionValue(position.getPositionValue())
+                    .pnlAfterFee(pnlAfterFee)
+                    .pnlPercent(pnlPercent)
+                    .fee(totalFee)
+                    .closeReason(reason)
+                    .openTime(position.getOpenTime())
+                    .closeTime(Instant.now())
+                    .partialTpExecuted(position.isPartialTpExecuted())
+                    .partialTpPnl(position.getPartialTpPnl())
+                    .durationMinutes(durationMin)
+                    .build();
+
+            tradeHistoryRepository.save(history);
+            log.info("💾 Trade saved to DB: #{}", position.getId());
+        } catch (Exception e) {
+            log.error("❌ Cannot save trade to DB: {}", e.getMessage());
+        }
     }
 
     // SESUDAH:
