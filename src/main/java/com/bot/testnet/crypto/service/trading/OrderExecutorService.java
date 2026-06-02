@@ -562,7 +562,6 @@ public class OrderExecutorService {
                             openPosition.getQuantity());
                 }
 
-                sendLivePositionOpenedNotif(openPosition);
                 if (signal.getTakeProfit() != null && signal.getStopLoss() != null) {
                     try {
                         OcoOrderResponse ocoResult = binanceOcoService.placeOcoOrder(
@@ -578,30 +577,12 @@ public class OrderExecutorService {
                             openPosition.setOcoOrderListId(ocoResult.getOrderListId());
                             openPosition.setLastOcoSL(adjustedSL);
                             log.info("✅ OCO placed: {}", ocoResult.getOrderListId());
-                            telegramService.sendMessage(
-                                    "🛡️ [LIVE] OCO Protection Active",
-                                    String.format(
-                                            "SL dan TP terpasang di Binance.\n" +
-                                                    "Aman meski bot restart!\n\n" +
-                                                    "🎯 TP: <b>$%.2f</b>\n" +
-                                                    "🛑 SL: <b>$%.2f</b>\n" +
-                                                    "⏰ %s WIB",
-                                            signal.getTakeProfit().doubleValue(),
-                                            signal.getStopLoss().doubleValue(),
-                                            formatTime()));
                         } else if ("SKIPPED".equals(ocoResult.getStatus())) {
                             log.info("ℹ️ OCO skipped (testnet mode)");
                         } else {
                             log.warn("⚠️ OCO failed: {}", ocoResult.getErrorMessage());
-                            telegramService.sendMessage(
-                                    "⚠️ [LIVE] OCO Gagal — Monitor Manual!",
-                                    String.format(
-                                            "OCO tidak berhasil!\n" +
-                                                    "SL/TP hanya di memory bot.\n\n" +
-                                                    "Jangan restart bot saat ada posisi!\n" +
-                                                    "⏰ %s WIB",
-                                            formatTime()));
                         }
+                        sendLivePositionOpenedNotif(openPosition, ocoResult.getStatus());
                     } catch (Exception e) {
                         log.error("❌ OCO error: {}", e.getMessage());
                     }
@@ -1091,28 +1072,38 @@ public class OrderExecutorService {
     // Private: Notifications
     // ═══════════════════════════════════════════════════
 
-    private void sendLivePositionOpenedNotif(LivePosition position) {
+    private void sendLivePositionOpenedNotif(LivePosition position, String ocoStatus) {
+        String strategy = position.getStrategy() == StrategyType.EMA_CROSSOVER
+                ? "EMA_CROSSOVER"
+                : "BB_MEAN_REVERSION";
+
         telegramService.sendMessage(
                 "🟢 [LIVE] Position Opened",
                 String.format(
                         "🆔 #%s | %s\n\n" +
                                 "💰 Entry: <b>$%.4f</b>\n" +
-                                "📦 Qty:   <b>%.6f %s</b>\n" +
+                                "📦 Qty: <b>%.3f %s</b>\n" +
                                 "💵 Value: <b>$%.2f</b>\n\n" +
                                 "🛑 SL: <b>$%.4f</b>\n" +
-                                "🎯 Exit: <b>%s</b>\n\n" +
+                                "🎯 TP: <b>%s</b>\n\n" +
+                                "%s\n" +
                                 "⏰ %s WIB",
                         position.getId(),
-                        position.getStrategy(),
+                        strategy,
                         position.getEntryPrice().doubleValue(),
                         position.getQuantity().doubleValue(),
                         baseCurrency,
                         position.getPositionValue().doubleValue(),
                         position.getStopLoss().doubleValue(),
-                        position.getStrategy() == StrategyType.EMA_CROSSOVER
-                                ? "TRAILING SL"
-                                : String.format("$%.4f (TP)", position.getTakeProfit().doubleValue()),
-                        formatTime()));
+                        position.getTakeProfit() != null
+                                ? String.format("$%.4f", position.getTakeProfit().doubleValue())
+                                : "TRAILING SL",
+                        "SUCCESS".equals(ocoStatus)
+                                ? "🛡️ OCO Active — aman meski bot restart!"
+                                : "⚠️ OCO tidak aktif — monitor manual!",
+                        formatTime()
+                )
+        );
     }
 
     private void updateCloseStats(LivePosition position,
