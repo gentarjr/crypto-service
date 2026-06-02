@@ -6,6 +6,7 @@ import com.bot.testnet.crypto.repository.TradeHistoryRepository;
 import com.bot.testnet.crypto.service.trading.OrderExecutorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -31,6 +32,9 @@ public class LiveTradingController {
     private final OrderExecutorService orderExecutorService;
     private final TradeHistoryRepository tradeHistoryRepository;
 
+    @Value("${trading.risk.max-consecutive-losses:10}")
+    private int maxConsecutiveLosses;
+
     @GetMapping("/status")
     public Map<String, Object> status() {
         LivePosition pos = orderExecutorService.getOpenPosition();
@@ -46,6 +50,8 @@ public class LiveTradingController {
         result.put("cooldownMinutes", orderExecutorService.getEffectiveCooldownMinutes());
         result.put("inCooldown", orderExecutorService.isInCooldown());
         result.put("cooldownRemainingMinutes", orderExecutorService.getCooldownRemainingMinutes());
+        result.put("consecutiveLosses", orderExecutorService.getConsecutiveLosses());
+        result.put("maxConsecutiveLosses", maxConsecutiveLosses);
         return result;
     }
 
