@@ -8,7 +8,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -50,8 +55,23 @@ public class LiveTradingController {
     }
 
     @GetMapping("/history")
-    public List<TradeHistory> getHistory() {
-        return tradeHistoryRepository.findTop100ByOrderByCloseTimeDesc();
+    public Map<String, Object> getHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<TradeHistory> result = tradeHistoryRepository
+                .findAllByOrderByCloseTimeDesc(pageable);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("trades", result.getContent());
+        response.put("totalElements", result.getTotalElements());
+        response.put("totalPages", result.getTotalPages());
+        response.put("currentPage", result.getNumber());
+        response.put("pageSize", result.getSize());
+        response.put("hasNext", result.hasNext());
+        response.put("hasPrevious", result.hasPrevious());
+        return response;
     }
 
     @GetMapping("/stats/today")

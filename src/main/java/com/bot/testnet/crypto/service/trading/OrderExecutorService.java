@@ -114,6 +114,7 @@ public class OrderExecutorService {
     private Instant lastCloseTime = null;
     private StrategyType lastCloseStrategy = null;
     private GetIndicatorResponse lastSnapshot = null;
+    private boolean lastCloseWasLoss = false;
 
 
     private boolean isWithinTradingHours() {
@@ -234,6 +235,7 @@ public class OrderExecutorService {
 
     public int getCooldownRemainingMinutes() {
         if (lastCloseTime == null) return 0;
+        if (!lastCloseWasLoss) return 0;
 
         int minutes = (lastCloseStrategy == StrategyType.BB_MEAN_REVERSION)
                 ? bbCooldownMinutes
@@ -673,8 +675,7 @@ public class OrderExecutorService {
         }
 
         // Update trailing SL (EMA strategy only)
-        if (lastSnapshot != null
-                && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
+        if (lastSnapshot != null) {
             boolean trailingUpdated = trailingStopHelper.update(
                     openPosition, currentPrice, lastSnapshot.getAtr(), "LIVE");
 
@@ -742,8 +743,7 @@ public class OrderExecutorService {
         }
 
         // Update trailing SL (EMA strategy only)
-        if (lastSnapshot != null
-                && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
+        if (lastSnapshot != null) {
             boolean trailingUpdated = trailingStopHelper.update(
                     openPosition, realtimePrice, lastSnapshot.getAtr(), "LIVE");
 
@@ -1015,6 +1015,7 @@ public class OrderExecutorService {
 
     private boolean isCooldownActive() {
         if (lastCloseTime == null) return false;
+        if (!lastCloseWasLoss) return false;
 
         // ✅ BB pakai cooldown lebih pendek
         int minutes = (lastCloseStrategy == StrategyType.BB_MEAN_REVERSION)
@@ -1164,6 +1165,7 @@ public class OrderExecutorService {
         consecutiveLosses = isWin ? 0 : consecutiveLosses + 1;
         lastCloseTime = ZonedDateTime.now(
                 ZoneId.of("Asia/Jakarta")).toInstant();
+        lastCloseWasLoss = !isWin;
         lastCloseStrategy = position.getStrategy();
         closedPositions.add(position);
 
