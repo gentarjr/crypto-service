@@ -1312,7 +1312,6 @@ public class OrderExecutorService {
     public void updateTrailingFromWebSocket(BigDecimal price) {
         if (!liveEnabled || openPosition == null) return;
         if (lastSnapshot == null) return;
-        if (openPosition.getStrategy() != StrategyType.EMA_CROSSOVER) return;
 
         openPosition.updateHighestPrice(price);
         trailingStopHelper.update(openPosition, price, lastSnapshot.getAtr(), "LIVE-WS");
