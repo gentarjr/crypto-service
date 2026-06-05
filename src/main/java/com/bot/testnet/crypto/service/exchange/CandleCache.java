@@ -243,4 +243,21 @@ public class CandleCache {
             candles.remove(0);
         }
     }
+
+    public List<Candle> getLastNClosedCandles(int n) {
+        lock.readLock().lock();
+        try {
+            Instant now = Instant.now();
+            List<Candle> closed = new ArrayList<>();
+            for (int i = candles.size() - 1; i >= 0 && closed.size() < n; i--) {
+                Candle c = candles.get(i);
+                if (isCandleClosed(c, now)) {
+                    closed.add(0, c); // prepend → urutan kronologis (lama → baru)
+                }
+            }
+            return Collections.unmodifiableList(closed);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
 }

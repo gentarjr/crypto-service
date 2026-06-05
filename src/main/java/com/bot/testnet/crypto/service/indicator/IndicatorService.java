@@ -145,6 +145,9 @@ public class IndicatorService {
 
         // Get last index (candle terbaru)
         int lastIndex = series.getEndIndex();
+        if (candleCache.isLastCandleLive() && lastIndex > 0) {
+            lastIndex = lastIndex - 1;
+        }
         int prevIndex = lastIndex - 1;
 
         // Hitung values
@@ -155,7 +158,7 @@ public class IndicatorService {
         Num emaSlowPrev = emaSlow.getValue(prevIndex);
         Num rsiNow = rsi.getValue(lastIndex);
         // ✨ NEW: Calculate volume ratio & zone
-        Num currentVolumeNow = volume.getValue(prevIndex);
+        Num currentVolumeNow = volume.getValue(lastIndex);
         Num volumeMANow = volumeMA.getValue(lastIndex);
         Num atrNow = atr.getValue(lastIndex);
         Num bbUpperNow = bbUpper.getValue(lastIndex);
@@ -204,7 +207,7 @@ public class IndicatorService {
         // Build snapshot
         GetIndicatorResponse snapshot = GetIndicatorResponse.builder()
                 .calculatedAt(Instant.now())
-                .candleTime(candles.get(candles.size() - 1).getCloseTime())
+                .candleTime(candles.get(lastIndex).getCloseTime())
                 .currentPrice(toBigDecimal(currentClose))
                 .emaFast(toBigDecimal(emaFastNow))
                 .emaSlow(toBigDecimal(emaSlowNow))

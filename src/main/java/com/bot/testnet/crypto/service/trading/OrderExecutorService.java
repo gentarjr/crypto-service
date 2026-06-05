@@ -1337,6 +1337,12 @@ public class OrderExecutorService {
 
             if (ocoTP.compareTo(ocoSL) <= 0) {
                 log.warn("⚠️ OCO update skip: TP ${} <= SL ${}", ocoTP, ocoSL);
+                telegramService.sendMessage("🚨 [LIVE] Posisi TANPA OCO!",
+                        String.format("OCO lama sudah dibatalkan tapi yang baru GAGAL dipasang " +
+                                        "(TP $%.2f ≤ SL $%.2f).\nPosisi #%s sekarang TANPA proteksi exchange. " +
+                                        "Cek Binance!\n⏰ %s WIB",
+                                ocoTP.doubleValue(), ocoSL.doubleValue(),
+                                position.getId(), formatTime()));
                 return;
             }
 

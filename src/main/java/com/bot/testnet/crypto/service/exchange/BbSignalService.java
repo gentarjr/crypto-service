@@ -109,36 +109,23 @@ public class BbSignalService implements SignalService {
         // S1: BB position scoring (paling penting di BB strategy)
         // Harga di lower band atau mendekati = lebih bagus
         if (currentPrice.compareTo(bbLower) <= 0) {
-            // Harga sudah di bawah/sama dengan lower band = PERFECT
             score += 35;
             filters.add(SignalFilter.pass("BB_POSITION",
-                    String.format("+35pts | Price $%.2f ≤ Lower BB $%.2f (extreme oversold zone ✅)",
+                    String.format("+35pts | Price $%.2f ≤ Lower BB $%.2f (extreme oversold ✅)",
                             currentPrice.doubleValue(), bbLower.doubleValue())));
         } else {
-            // Harga di atas lower band tapi dalam 1% → masih ok
-            // S3: Bullish candle — hanya valid kalau harga dekat lower band
-            BigDecimal gap = currentPrice.subtract(bbLower);
-            BigDecimal gapPct = gap.divide(currentPrice, 4, RoundingMode.HALF_UP)
+            BigDecimal gapPct = currentPrice.subtract(bbLower)
+                    .divide(currentPrice, 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
             double gapPctVal = gapPct.doubleValue();
 
-            if (currentPrice.compareTo(bbLower) <= 0) {
-                // Harga di bawah lower band = bounce yang kuat
-                score += 15;
-                filters.add(SignalFilter.pass("BULLISH_CANDLE",
-                        String.format("+15pts | Bounce from below lower band $%.2f ✅",
-                                bbLower.doubleValue())));
-            } else if (gapPctVal <= 0.5) {
-                // Harga sedikit di atas lower band, tetap valid
+            if (gapPctVal <= 0.5) {
                 score += 10;
-                filters.add(SignalFilter.pass("BULLISH_CANDLE",
-                        String.format("+10pts | Close near lower band (%.2f%% above) ✅", gapPctVal)));
+                filters.add(SignalFilter.pass("BB_POSITION",
+                        String.format("+10pts | Price %.2f%% above lower band ✅", gapPctVal)));
             } else {
-                // Harga jauh dari lower band, candle tidak bermakna untuk reversal
-                score += 0;
-                filters.add(SignalFilter.fail("BULLISH_CANDLE",
-                        String.format("+0pts | Price %.2f%% above lower band (not a valid bounce)",
-                                gapPctVal)));
+                filters.add(SignalFilter.fail("BB_POSITION",
+                        String.format("+0pts | Price %.2f%% above lower band (not a valid bounce)", gapPctVal)));
             }
         }
 
@@ -164,16 +151,20 @@ public class BbSignalService implements SignalService {
         }
 
         // S3: Bullish candle scoring
-        boolean bullishClose = currentPrice.compareTo(bbLower) >= 0;
-        if (bullishClose) {
-            score += 15;
-            filters.add(SignalFilter.pass("BULLISH_CANDLE",
-                    String.format("+15pts | Bullish close $%.2f ≥ Lower BB $%.2f ✅",
-                            currentPrice.doubleValue(), bbLower.doubleValue())));
+        List<Candle> recent = snapshot.getRecentCandles();
+        if (recent != null && !recent.isEmpty()) {
+            Candle last = recent.get(recent.size() - 1);
+            if (last.getClose().compareTo(last.getOpen()) > 0) {
+                score += 15;
+                filters.add(SignalFilter.pass("BULLISH_CANDLE",
+                        String.format("+15pts | Bullish candle (close $%.2f > open $%.2f) ✅",
+                                last.getClose().doubleValue(), last.getOpen().doubleValue())));
+            } else {
+                filters.add(SignalFilter.fail("BULLISH_CANDLE",
+                        "+0pts | Candle terakhir belum hijau — tunggu konfirmasi"));
+            }
         } else {
-            filters.add(SignalFilter.fail("BULLISH_CANDLE",
-                    String.format("+0pts | No bullish close (price $%.2f < BB $%.2f)",
-                            currentPrice.doubleValue(), bbLower.doubleValue())));
+            filters.add(SignalFilter.fail("BULLISH_CANDLE", "+0pts | No candle data"));
         }
 
         // S4: Volume scoring
@@ -384,6 +375,13 @@ public class BbSignalService implements SignalService {
                 atr.multiply(BigDecimal.valueOf(tpAtrMultiplier)));
 
         BigDecimal slDistance = price.subtract(stopLoss);
+        if (slDistance.compareTo(BigDecimal.ZERO) <= 0) {
+            filters.add(SignalFilter.fail("SL_INVALID",
+                    String.format("stopLoss $%.2f ≥ price $%.2f — invalid long setup",
+                            stopLoss.doubleValue(), price.doubleValue())));
+            return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                    "SL above entry — skip", filters);
+        }
         BigDecimal slDistancePct = slDistance
                 .divide(price, 6, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));
@@ -394,27 +392,6 @@ public class BbSignalService implements SignalService {
                 .multiply(BigDecimal.valueOf(100));
 
         BigDecimal rrRatio = BigDecimal.ZERO;
-        if (slDistance.compareTo(BigDecimal.ZERO) > 0) {
-            rrRatio = tpDistance.divide(slDistance, 2, RoundingMode.HALF_UP);
-            BigDecimal feeTotal    = new BigDecimal("0.0015");
-            BigDecimal tpPct       = takeProfit.subtract(price)
-                    .divide(price, 6, RoundingMode.HALF_UP);
-            BigDecimal slPct       = price.subtract(stopLoss).abs()
-                    .divide(price, 6, RoundingMode.HALF_UP);
-            BigDecimal netTpPct    = tpPct.subtract(feeTotal);
-            BigDecimal netSlPct    = slPct.add(feeTotal);
-            BigDecimal rrAfterFee  = netSlPct.compareTo(BigDecimal.ZERO) > 0
-                    ? netTpPct.divide(netSlPct, 2, RoundingMode.HALF_UP)
-                    : BigDecimal.ZERO;
-
-            if (rrAfterFee.compareTo(new BigDecimal("0.8")) < 0) {
-                filters.add(SignalFilter.fail("RR_TOO_LOW",
-                        String.format("+0pts | R:R after fee %.2f < 1.0 — skip ❌",
-                                rrAfterFee.doubleValue())));
-                return Signal.hold(StrategyType.BB_MEAN_REVERSION,
-                        "R:R after fee too low: " + rrAfterFee, filters);
-            }
-        }
 
         BigDecimal availableCapital;
         try {
@@ -431,12 +408,6 @@ public class BbSignalService implements SignalService {
                 .multiply(BigDecimal.valueOf(riskPerTradePercent / 100));
 
         BigDecimal calculatedPos = BigDecimal.ZERO;
-        if (slDistancePct.compareTo(BigDecimal.ZERO) > 0) {
-            calculatedPos = riskAmount.divide(
-                    slDistancePct.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP),
-                    2, RoundingMode.HALF_UP);
-        }
-
         BigDecimal maxPos = availableCapital
                 .multiply(BigDecimal.valueOf(maxPositionPercent / 100))
                 .multiply(BigDecimal.valueOf(posMultiplier));

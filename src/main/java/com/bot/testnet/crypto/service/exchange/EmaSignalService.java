@@ -460,6 +460,13 @@ public class EmaSignalService implements SignalService {
                 atr.multiply(BigDecimal.valueOf(tpAtrMultiplier)));
 
         BigDecimal slDistance = price.subtract(stopLoss);
+        if (slDistance.compareTo(BigDecimal.ZERO) <= 0) {
+            filters.add(SignalFilter.fail("SL_DISTANCE",
+                    String.format("SL distance ≤ 0 (ATR=%.6f too low)", atr.doubleValue())));
+            return Signal.hold(StrategyType.EMA_CROSSOVER,
+                    "ATR too low — SL distance is zero", filters);
+        }
+
         BigDecimal slDistancePct = slDistance
                 .divide(price, 6, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));

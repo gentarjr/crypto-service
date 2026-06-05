@@ -281,7 +281,7 @@ public class CandleScheduler {
             }
 
             // ✅ Set recentCandles + 4H DULU sebelum kirim ke service
-            List<Candle> recentCandles = candleCache.getLastNCandles(3);
+            List<Candle> recentCandles = candleCache.getLastNClosedCandles(3);
             snapshot.setRecentCandles(recentCandles);
 
             // ✅ Fetch 4H data
