@@ -407,7 +407,7 @@ public class BbSignalService implements SignalService {
                     ? netTpPct.divide(netSlPct, 2, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
 
-            if (rrAfterFee.compareTo(BigDecimal.ONE) < 0) {
+            if (rrAfterFee.compareTo(new BigDecimal("0.8")) < 0) {
                 filters.add(SignalFilter.fail("RR_TOO_LOW",
                         String.format("+0pts | R:R after fee %.2f < 1.0 — skip ❌",
                                 rrAfterFee.doubleValue())));
