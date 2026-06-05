@@ -557,7 +557,7 @@ public class OrderExecutorService {
                 if (orderResult.getFilledAmount() != null
                         && orderResult.getFilledAmount().compareTo(BigDecimal.ZERO) > 0) {
                     openPosition.setQuantity(
-                            orderResult.getFilledAmount().setScale(2, RoundingMode.DOWN));
+                            orderResult.getFilledAmount().setScale(3, RoundingMode.DOWN));
                     log.info("📐 Position qty updated to actual fill: {}",
                             openPosition.getQuantity());
                 }
