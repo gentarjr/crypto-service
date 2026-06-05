@@ -280,19 +280,11 @@ public class CandleScheduler {
                 return;
             }
 
-            paperTradingService.updateSnapshot(snapshot);
-            orderExecutorService.updateSnapshot(snapshot);
+            // ✅ Set recentCandles + 4H DULU sebelum kirim ke service
+            List<Candle> recentCandles = candleCache.getLastNCandles(3);
+            snapshot.setRecentCandles(recentCandles);
 
-            log.info("📋 Regime: {} → Strategy: {}",
-                    snapshot.getMarketRegime(),
-                    snapshot.getPreferredStrategy());
-
-            if (!tradingHoursService.isWithinTradingHours()) {
-                log.info("🕐 Outside trading hours — skip signal evaluation");
-                return;
-            }
-
-            // ✅ Tambah fetch 4H data
+            // ✅ Fetch 4H data
             try {
                 GetCandleResponse candles4H = candleService.getCandles4H(
                         baseCurrency, quoteCurrency);
@@ -315,12 +307,22 @@ public class CandleScheduler {
                 }
             } catch (Exception e) {
                 log.warn("⚠️ Cannot fetch 4H data: {}", e.getMessage());
-                // Tidak fatal, lanjut tanpa 4H filter
+            }
+
+            // Baru kirim snapshot (sudah lengkap dengan recentCandles + 4H)
+            paperTradingService.updateSnapshot(snapshot);
+            orderExecutorService.updateSnapshot(snapshot);
+
+            log.info("📋 Regime: {} → Strategy: {}",
+                    snapshot.getMarketRegime(),
+                    snapshot.getPreferredStrategy());
+
+            if (!tradingHoursService.isWithinTradingHours()) {
+                log.info("🕐 Outside trading hours — skip signal evaluation");
+                return;
             }
 
             // Step 2: Evaluate signal (delegate ke AdaptiveSignalService)
-            List<Candle> recentCandles = candleCache.getLastNCandles(3);
-            snapshot.setRecentCandles(recentCandles);
             Signal signal = adaptiveSignalService.evaluate(snapshot);
             // Step 3: Log signal
             logSignal(signal);
