@@ -99,6 +99,12 @@ public class OrderExecutorService {
     @Value("${trading.risk.timeout-profit-threshold:0.5}")
     private double timeoutProfitThreshold;
 
+    @Value("${trading.risk.risk-per-trade-percent:0.5}")
+    private double riskPerTradePercent;
+
+    @Value("${trading.risk.max-position-percent:75.0}")
+    private double maxPositionPercent;
+
     // ═══════════════════════════════════════════════════
     // State
     // ═══════════════════════════════════════════════════
@@ -296,6 +302,37 @@ public class OrderExecutorService {
             }
 
             BigDecimal positionSize = signal.getPositionSize();
+            if (positionSize == null || positionSize.compareTo(BigDecimal.ZERO) <= 0) {
+                // Fallback: signal tidak ngirim ukuran posisi -> hitung dari SALDO ASLI Binance
+                BigDecimal capital = balanceService.getTotalCapital();   // equity nyata (USDT + BNB)
+                BigDecimal entry = (signal.getPrice() != null
+                        && signal.getPrice().compareTo(BigDecimal.ZERO) > 0)
+                        ? signal.getPrice() : currentPrice;
+                BigDecimal sl = signal.getStopLoss();
+                if (sl == null || sl.compareTo(BigDecimal.ZERO) <= 0
+                        || entry.compareTo(sl) <= 0) {
+                    log.error("❌ Cannot size position: invalid entry/SL (entry={}, sl={})", entry, sl);
+                    return;
+                }
+                // Risk = % dari saldo nyata. Posisi = risk / jarak-SL
+                BigDecimal riskAmount = capital
+                        .multiply(BigDecimal.valueOf(riskPerTradePercent))
+                        .divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
+                BigDecimal slDistancePct = entry.subtract(sl)
+                        .divide(entry, 8, RoundingMode.HALF_UP);
+                positionSize = riskAmount.divide(slDistancePct, 2, RoundingMode.DOWN);
+
+                // Batasi: tidak melebihi maxPositionPercent dari saldo, dan tidak melebihi USDT tersedia
+                BigDecimal maxByCapital = capital
+                        .multiply(BigDecimal.valueOf(maxPositionPercent))
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.DOWN);
+                if (positionSize.compareTo(maxByCapital) > 0) positionSize = maxByCapital;
+                if (positionSize.compareTo(availableUsdt) > 0) positionSize = availableUsdt;
+
+                log.info("📐 [LIVE] Position size computed: ${} (capital ${} | risk ${} | SL {}%)",
+                        positionSize, capital, riskAmount,
+                        slDistancePct.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
+            }
             if (positionSize == null || positionSize.compareTo(BigDecimal.ZERO) <= 0) {
                 log.error("❌ Invalid position size: {}", positionSize);
                 return;
