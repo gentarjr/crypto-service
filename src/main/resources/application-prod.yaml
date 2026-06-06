@@ -129,6 +129,9 @@ trading:
     reconnect-delay-seconds: 5
     max-reconnect-attempts: 10
     enabled: true               # ✅ aktifkan WebSocket di VPS!
+    health:
+      enabled: true
+      idle-threshold-seconds: 90
 
   hours:
     enabled: false              # ✅ crypto 24/7, tidak perlu jam aktif

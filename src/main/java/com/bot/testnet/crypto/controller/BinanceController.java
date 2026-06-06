@@ -3,12 +3,8 @@ package com.bot.testnet.crypto.controller;
 import com.bot.testnet.crypto.model.dto.Signal;
 import com.bot.testnet.crypto.model.request.GetBalanceCurrencyRequest;
 import com.bot.testnet.crypto.model.request.GetCurrentPriceRequest;
-import com.bot.testnet.crypto.model.request.PostBuyRequest;
-import com.bot.testnet.crypto.model.request.PostSellRequest;
 import com.bot.testnet.crypto.model.response.GetCurrentPriceResponse;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
-import com.bot.testnet.crypto.model.response.PostBuyResponse;
-import com.bot.testnet.crypto.model.response.PostSellResponse;
 import com.bot.testnet.crypto.service.exchange.*;
 import com.bot.testnet.crypto.service.indicator.IndicatorService;
 import com.bot.testnet.crypto.service.indicator.MultiTimeframeService;
@@ -26,8 +22,6 @@ import java.util.Map;
 public class BinanceController {
 
     private final BinanceService binanceService;
-    private final BinanceBuyService binanceBuyService;
-    private final BinanceSellService binanceSellService;
     private final IndicatorService indicatorService;
     private final MultiTimeframeService multiTimeframeService;
     private final CandleService candleService;
@@ -50,30 +44,6 @@ public class BinanceController {
     public Balance getBalanceCurrency(@PathVariable String currency) throws Exception{
         return binanceService.getBalance(GetBalanceCurrencyRequest.builder()
                         .currency(currency.toUpperCase())
-                .build());
-    }
-
-    @PostMapping("/buy")
-    public PostBuyResponse buy(
-            @RequestParam String base,
-            @RequestParam String quote,
-            @RequestParam BigDecimal amount) throws Exception{
-        return binanceBuyService.placeMarketBuyOrder(PostBuyRequest.builder()
-                        .base(base)
-                        .quote(quote)
-                        .amount(amount)
-                .build());
-    }
-
-    @PostMapping("/sell")
-    public PostSellResponse sell(
-            @RequestParam String base,
-            @RequestParam String quote,
-            @RequestParam BigDecimal amount) throws Exception{
-        return binanceSellService.placeMarketSellOrder(PostSellRequest.builder()
-                .base(base)
-                .quote(quote)
-                .amount(amount)
                 .build());
     }
 
