@@ -289,7 +289,6 @@ public class EmaSignalService implements SignalService {
                     String.format("+5pts | Trading in peak hours (UTC %d) ✅",
                             currentHourUtc)));
         } else {
-            score -= 5; // ← penalty dead hours
             filters.add(SignalFilter.fail("PEAK_HOURS",
                     String.format("-5pts | Dead hours (UTC %d) — low liquidity ❌",
                             currentHourUtc)));
