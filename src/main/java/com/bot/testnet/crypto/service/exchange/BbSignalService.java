@@ -391,7 +391,18 @@ public class BbSignalService implements SignalService {
                 .divide(price, 6, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));
 
-        BigDecimal rrRatio = BigDecimal.ZERO;
+        BigDecimal rrRatio = takeProfit.subtract(price)
+                .divide(price.subtract(stopLoss), 2, RoundingMode.HALF_UP);
+        BigDecimal minRrRatio = new BigDecimal("1.2");
+        if (rrRatio.compareTo(minRrRatio) < 0) {
+            filters.add(SignalFilter.fail("RISK_REWARD",
+                    String.format("R:R 1:%.2f < min 1:%.1f",
+                            rrRatio.doubleValue(), minRrRatio.doubleValue())));
+            return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                    String.format("R:R %.2f below minimum %.1f",
+                            rrRatio.doubleValue(), minRrRatio.doubleValue()),
+                    filters);
+        }
 
         BigDecimal availableCapital;
         try {
@@ -407,7 +418,9 @@ public class BbSignalService implements SignalService {
         BigDecimal riskAmount = availableCapital
                 .multiply(BigDecimal.valueOf(riskPerTradePercent / 100));
 
-        BigDecimal calculatedPos = BigDecimal.ZERO;
+        BigDecimal calculatedPos = riskAmount.divide(
+                slDistancePct.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP),
+                2, RoundingMode.HALF_UP);
         BigDecimal maxPos = availableCapital
                 .multiply(BigDecimal.valueOf(maxPositionPercent / 100))
                 .multiply(BigDecimal.valueOf(posMultiplier));
