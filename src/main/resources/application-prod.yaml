@@ -82,7 +82,7 @@ trading:
       enabled: true
       volume-surge-multiplier: 1.5
       rsi-max-threshold: 70
-      price-extension-max: 1.03
+      price-extension-max: 1.015
       atr-extreme-multiplier: 2.5
       buy-score-threshold: 65
       strong-buy-score-threshold: 85

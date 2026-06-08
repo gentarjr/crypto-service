@@ -42,7 +42,7 @@ public class EmaSignalService implements SignalService {
     @Value("${trading.strategy.ema.rsi-max-threshold:70}")
     private double rsiMaxThreshold;
 
-    @Value("${trading.strategy.ema.price-extension-max:1.03}")
+    @Value("${trading.strategy.ema.price-extension-max:1.015}")
     private double priceExtensionMax;
 
     @Value("${trading.risk.sl-atr-multiplier:1.5}")
