@@ -745,46 +745,46 @@ public class OrderExecutorService {
         } finally {
             positionLock.unlock();
         }
+
         checkPartialTakeProfit(realtimePrice);
+
+        // Guard setelah lock dilepas
+        LivePosition pos = openPosition;
+        if (pos == null) return;
 
         log.info("📡 [LIVE] RT monitor: price=${} SL=${} TP={}",
                 realtimePrice,
-                openPosition.getStopLoss(),
-                openPosition.getTakeProfit() != null
-                        ? "$" + openPosition.getTakeProfit() : "TRAIL");
+                pos.getStopLoss(),
+                pos.getTakeProfit() != null ? "$" + pos.getTakeProfit() : "TRAIL");
 
-        // Check SL
-        if (openPosition.isHitStopLoss(realtimePrice)) {
-            String reason = openPosition.isTrailingActive()
-                    ? "TRAILING_STOP" : "STOP_LOSS";
+        if (pos.isHitStopLoss(realtimePrice)) {
+            String reason = pos.isTrailingActive() ? "TRAILING_STOP" : "STOP_LOSS";
             log.warn("🛑 [LIVE] {} HIT (realtime): ${} <= ${}",
-                    reason, realtimePrice, openPosition.getStopLoss());
+                    reason, realtimePrice, pos.getStopLoss());
             closeLivePosition(realtimePrice, reason);
             return;
         }
 
-        // Check TP
-        if (openPosition.isHitTakeProfit(realtimePrice)) {
+        if (pos.isHitTakeProfit(realtimePrice)) {
             log.info("🎯 [LIVE] TP HIT (realtime): ${} >= ${}",
-                    realtimePrice, openPosition.getTakeProfit());
+                    realtimePrice, pos.getTakeProfit());
             closeLivePosition(realtimePrice, "TAKE_PROFIT");
             return;
         }
 
-        // Update trailing SL (EMA strategy only)
         if (lastSnapshot != null) {
             boolean trailingUpdated = trailingStopHelper.update(
-                    openPosition, realtimePrice, lastSnapshot.getAtr(), "LIVE");
+                    pos, realtimePrice, lastSnapshot.getAtr(), "LIVE");
 
-            if (trailingUpdated && openPosition.getOcoOrderListId() != null) {
-                BigDecimal slChange = openPosition.getStopLoss()
-                        .subtract(openPosition.getLastOcoSL() != null
-                                ? openPosition.getLastOcoSL()
-                                : openPosition.getInitialStopLoss())
+            if (trailingUpdated && pos.getOcoOrderListId() != null) {
+                BigDecimal slChange = pos.getStopLoss()
+                        .subtract(pos.getLastOcoSL() != null
+                                ? pos.getLastOcoSL()
+                                : pos.getInitialStopLoss())
                         .abs();
                 if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
-                    updateOcoAfterTrailing(openPosition);
-                    openPosition.setLastOcoSL(openPosition.getStopLoss());
+                    updateOcoAfterTrailing(pos);
+                    pos.setLastOcoSL(pos.getStopLoss());
                 }
             }
         }
@@ -1351,14 +1351,19 @@ public class OrderExecutorService {
      */
     public void updateTrailingFromWebSocket(BigDecimal price) {
         if (!liveEnabled || openPosition == null) return;
+
+        GetIndicatorResponse snapshot = lastSnapshot; // ← copy ke local variable
+        if (snapshot == null) return;
+
         positionLock.lock();
         try {
             if (openPosition == null) return;
             openPosition.updateHighestPrice(price);
-            trailingStopHelper.update(openPosition, price, lastSnapshot.getAtr(), "LIVE-WS");
+            trailingStopHelper.update(openPosition, price, snapshot.getAtr(), "LIVE-WS"); // ← pakai local
         } finally {
             positionLock.unlock();
         }
+
         checkPartialTakeProfit(price);
     }
 
