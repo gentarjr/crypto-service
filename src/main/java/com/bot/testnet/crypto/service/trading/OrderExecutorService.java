@@ -738,7 +738,13 @@ public class OrderExecutorService {
     public void monitorPositionRealtime(BigDecimal realtimePrice) {
         if (!liveEnabled || openPosition == null) return;
 
-        openPosition.updateHighestPrice(realtimePrice);
+        positionLock.lock();
+        try {
+            if (openPosition == null) return;
+            openPosition.updateHighestPrice(realtimePrice);
+        } finally {
+            positionLock.unlock();
+        }
         checkPartialTakeProfit(realtimePrice);
 
         log.info("📡 [LIVE] RT monitor: price=${} SL=${} TP={}",
