@@ -30,7 +30,22 @@ public class TrailingStopHelper {
 
         position.updateHighestPrice(currentPrice);
 
-        // Activate breakeven
+        if (!position.isTrailingActive()) {
+            BigDecimal oneR = position.getEntryPrice()
+                    .subtract(position.getInitialStopLoss()).abs();
+            BigDecimal halfRTrigger = position.getEntryPrice()
+                    .add(oneR.multiply(new BigDecimal("0.5")));
+
+            if (currentPrice.compareTo(halfRTrigger) >= 0) {
+                BigDecimal breakevenSL = position.getEntryPrice()
+                        .multiply(new BigDecimal("1.00075")); // cover buy fee
+                boolean updated = position.ratchetStopLoss(breakevenSL);
+                if (updated) {
+                    log.info("🔒 [{}] Breakeven SL at 0.5R → ${}", label, breakevenSL);
+                }
+            }
+        }
+
         if (!position.isTrailingActive()
                 && position.isBreakevenActivationReached(currentPrice)) {
             position.setTrailingActive(true);
@@ -45,7 +60,6 @@ public class TrailingStopHelper {
             return updated;
         }
 
-        // Update trailing
         if (position.isTrailingActive()) {
             BigDecimal newSL = position.calculateTrailingSL(atr, trailingAtrMultiplier);
             boolean updated = position.ratchetStopLoss(newSL);

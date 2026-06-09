@@ -103,11 +103,11 @@ trading:
     timeout-hours: 4              # default timeout
     timeout-profit-threshold: 0.5
     modal: 300                  # fallback kalau tidak bisa fetch balance
-    sl-atr-multiplier: 2.0
-    tp-atr-multiplier: 3.5
+    sl-atr-multiplier: 1.5
+    tp-atr-multiplier: 2.0
     max-position-percent: 75.0  # max 90% balance per posisi
     trailing-atr-multiplier: 1.5
-    risk-per-trade-percent: 0.5   # dari 1.0
+    risk-per-trade-percent: 1.5   # dari 1.0
     max-daily-loss-percent: 5.0   # dari 3.0
     max-consecutive-losses: 10     # dari 3
     cooldown-minutes: 60          # dari 30

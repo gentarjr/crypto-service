@@ -1,6 +1,6 @@
 package com.bot.testnet.crypto.controller;
 
-import com.bot.testnet.crypto.model.LivePosition;
+import com.bot.testnet.crypto.model.dto.LivePosition;
 import com.bot.testnet.crypto.model.entity.TradeHistory;
 import com.bot.testnet.crypto.repository.TradeHistoryRepository;
 import com.bot.testnet.crypto.service.trading.OrderExecutorService;

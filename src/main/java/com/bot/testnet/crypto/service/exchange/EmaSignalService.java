@@ -504,16 +504,25 @@ public class EmaSignalService implements SignalService {
         BigDecimal rrRatio = takeProfit.subtract(price)
                 .divide(price.subtract(stopLoss), 2, RoundingMode.HALF_UP);
 
+        BigDecimal FEE_RATE = new BigDecimal("0.00075");
+        BigDecimal totalFee = positionSize.multiply(FEE_RATE).multiply(BigDecimal.valueOf(2));
+        BigDecimal netReward = takeProfit.subtract(price)
+                .divide(price, 6, RoundingMode.HALF_UP).multiply(positionSize).subtract(totalFee);
+        BigDecimal netRisk = price.subtract(stopLoss)
+                .divide(price, 6, RoundingMode.HALF_UP).multiply(positionSize).add(totalFee);
+        BigDecimal effectiveRR = netRisk.compareTo(BigDecimal.ZERO) > 0
+                ? netReward.divide(netRisk, 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
         BigDecimal minRrRatio = new BigDecimal("1.2");
-        if (rrRatio.compareTo(minRrRatio) < 0) {
-            log.warn("⚠️ [EMA] R:R ratio too low: 1:{} (min 1:{}) — skip",
-                    rrRatio, minRrRatio);
+        if (effectiveRR.compareTo(minRrRatio) < 0) {
+            log.warn("⚠️ [EMA] Effective R:R (after fee) too low: {} (min {}) — skip",
+                    effectiveRR, minRrRatio);
             filters.add(SignalFilter.fail("RISK_REWARD",
-                    String.format("R:R 1:%.2f < min 1:%.1f",
-                            rrRatio.doubleValue(), minRrRatio.doubleValue())));
+                    String.format("Effective R:R %.2f < %.1f after fee ($%.3f)",
+                            effectiveRR.doubleValue(), minRrRatio.doubleValue(), totalFee.doubleValue())));
             return Signal.hold(StrategyType.EMA_CROSSOVER,
-                    String.format("R:R ratio %.2f below minimum %.1f",
-                            rrRatio.doubleValue(), minRrRatio.doubleValue()),
+                    String.format("R:R not viable after fee: %.2f", effectiveRR.doubleValue()),
                     filters);
         }
 

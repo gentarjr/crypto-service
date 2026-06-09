@@ -1,6 +1,5 @@
-package com.bot.testnet.crypto.model;
+package com.bot.testnet.crypto.model.dto;
 
-import com.bot.testnet.crypto.model.dto.StrategyType;
 import com.bot.testnet.crypto.service.risk.TrailablePosition;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

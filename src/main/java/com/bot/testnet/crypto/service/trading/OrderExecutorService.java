@@ -1,6 +1,6 @@
 package com.bot.testnet.crypto.service.trading;
 
-import com.bot.testnet.crypto.model.LivePosition;
+import com.bot.testnet.crypto.model.dto.LivePosition;
 import com.bot.testnet.crypto.model.dto.Signal;
 import com.bot.testnet.crypto.model.dto.StrategyType;
 import com.bot.testnet.crypto.model.entity.TradeHistory;

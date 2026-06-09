@@ -15,4 +15,5 @@ public interface TrailablePosition {
     void updateHighestPrice(BigDecimal price);
     boolean ratchetStopLoss(BigDecimal newSL);
     BigDecimal calculateTrailingSL(BigDecimal atr, double multiplier);
+    BigDecimal getInitialStopLoss();
 }
