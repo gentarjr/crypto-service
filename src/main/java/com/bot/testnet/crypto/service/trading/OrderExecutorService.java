@@ -1351,10 +1351,14 @@ public class OrderExecutorService {
      */
     public void updateTrailingFromWebSocket(BigDecimal price) {
         if (!liveEnabled || openPosition == null) return;
-        if (lastSnapshot == null) return;
-
-        openPosition.updateHighestPrice(price);
-        trailingStopHelper.update(openPosition, price, lastSnapshot.getAtr(), "LIVE-WS");
+        positionLock.lock();
+        try {
+            if (openPosition == null) return;
+            openPosition.updateHighestPrice(price);
+            trailingStopHelper.update(openPosition, price, lastSnapshot.getAtr(), "LIVE-WS");
+        } finally {
+            positionLock.unlock();
+        }
         checkPartialTakeProfit(price);
     }
 

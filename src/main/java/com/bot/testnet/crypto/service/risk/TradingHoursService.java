@@ -50,7 +50,7 @@ public class TradingHoursService {
      * Info jam trading untuk logging
      */
     public String getTradingHoursInfo() {
-        int currentHourUtc = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).getHour();
+        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
         return String.format("UTC %02d:xx | Active: %02d:00-%02d:00 UTC | Status: %s",
                 currentHourUtc, startHourUtc, endHourUtc,
                 isWithinTradingHours() ? "ACTIVE" : "CLOSED");
