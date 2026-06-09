@@ -217,28 +217,26 @@ public class CandleScheduler {
     public void sendMorningHealthCheck() {
         try {
             BigDecimal balance = balanceService.getAvailableCapital();
-            DailyStats stats = paperTradingService.getTodayStats();
             boolean liveHalted = orderExecutorService.isHalted();
-            boolean paperHalted = paperTradingService.isHalted();
+            String status = liveHalted ? "⚠️ HALTED" : "✅ Running";
 
-            String status = (liveHalted || paperHalted) ? "⚠️ HALTED" : "✅ Running";
+            int yesterdayTrades = orderExecutorService.getClosedCount();
+            BigDecimal yesterdayPnl = orderExecutorService.getDailyPnl();
 
             telegramService.sendMessage(
                     "☀️ Morning Health Check",
                     String.format(
                             "Status: <b>%s</b>\n\n" +
-                                    "💰 Balance: <b>$%.2f USDT</b>\n" +
-                                    "📊 Paper Capital: <b>$%.2f</b>\n\n" +
-                                    "Yesterday:\n" +
+                                    "💰 Balance: <b>$%.2f USDT</b>\n\n" +
+                                    "Yesterday (Live):\n" +
                                     "   Trades: %d\n" +
-                                    "   P&L: $%.4f\n\n" +
+                                    "   P&L: <b>$%.4f</b>\n\n" +
                                     "Bot siap trading hari ini!\n" +
                                     "⏰ %s WIB",
                             status,
                             balance.doubleValue(),
-                            paperTradingService.getCurrentCapital().doubleValue(),
-                            stats.getTotalTrades(),
-                            stats.getTotalPnl().doubleValue(),
+                            yesterdayTrades,
+                            yesterdayPnl.doubleValue(),
                             formatTime()));
 
         } catch (Exception e) {
@@ -284,6 +282,12 @@ public class CandleScheduler {
             List<Candle> recentCandles = candleCache.getLastNClosedCandles(3);
             snapshot.setRecentCandles(recentCandles);
 
+            if (!tradingHoursService.isWithinTradingHours()) {
+                log.info("🕐 Outside trading hours — skip 4H fetch and signal evaluation");
+                orderExecutorService.updateSnapshot(snapshot);
+                return;
+            }
+
             // ✅ Fetch 4H data
             try {
                 GetCandleResponse candles4H = candleService.getCandles4H(
@@ -316,11 +320,6 @@ public class CandleScheduler {
             log.info("📋 Regime: {} → Strategy: {}",
                     snapshot.getMarketRegime(),
                     snapshot.getPreferredStrategy());
-
-            if (!tradingHoursService.isWithinTradingHours()) {
-                log.info("🕐 Outside trading hours — skip signal evaluation");
-                return;
-            }
 
             // Step 2: Evaluate signal (delegate ke AdaptiveSignalService)
             Signal signal = adaptiveSignalService.evaluate(snapshot);

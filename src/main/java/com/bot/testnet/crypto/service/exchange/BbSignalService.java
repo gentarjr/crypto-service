@@ -395,15 +395,18 @@ public class BbSignalService implements SignalService {
                 .divide(price.subtract(stopLoss), 2, RoundingMode.HALF_UP);
 
         BigDecimal FEE_RATE = new BigDecimal("0.00075");
-        BigDecimal estimatedPos;
+        BigDecimal availableCapital;
         try {
-            estimatedPos = balanceService.getAvailableCapital();
-            if (estimatedPos == null || estimatedPos.compareTo(BigDecimal.ZERO) <= 0) {
-                estimatedPos = BigDecimal.valueOf(modal);
+            availableCapital = balanceService.getAvailableCapital();
+            if (availableCapital == null || availableCapital.compareTo(BigDecimal.ZERO) <= 0) {
+                availableCapital = BigDecimal.valueOf(modal);
             }
         } catch (Exception e) {
-            estimatedPos = BigDecimal.valueOf(modal);
+            log.warn("Cannot fetch balance, using modal fallback");
+            availableCapital = BigDecimal.valueOf(modal);
         }
+
+        BigDecimal estimatedPos = availableCapital;
 
         BigDecimal totalFee = estimatedPos.multiply(FEE_RATE).multiply(BigDecimal.valueOf(2));
         BigDecimal netReward = tpDistance.divide(price, 6, RoundingMode.HALF_UP)
@@ -422,17 +425,6 @@ public class BbSignalService implements SignalService {
             return Signal.hold(StrategyType.BB_MEAN_REVERSION,
                     String.format("R:R not viable after fee: %.2f", effectiveRR.doubleValue()),
                     filters);
-        }
-
-        BigDecimal availableCapital;
-        try {
-            availableCapital = balanceService.getAvailableCapital();
-            if (availableCapital == null || availableCapital.compareTo(BigDecimal.ZERO) <= 0) {
-                availableCapital = BigDecimal.valueOf(modal);
-            }
-        } catch (Exception e) {
-            log.warn("Cannot fetch balance, using modal fallback");
-            availableCapital = BigDecimal.valueOf(modal);
         }
 
         BigDecimal riskAmount = availableCapital

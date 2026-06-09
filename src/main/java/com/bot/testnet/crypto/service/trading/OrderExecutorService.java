@@ -651,9 +651,14 @@ public class OrderExecutorService {
     // ═══════════════════════════════════════════════════
 
     private void monitorPosition(BigDecimal currentPrice) {
-        if (openPosition == null) return;
+        positionLock.lock();
+        try {
+            if (openPosition == null) return;
+            openPosition.updateHighestPrice(currentPrice);
+        } finally {
+            positionLock.unlock();
+        }
 
-        openPosition.updateHighestPrice(currentPrice);
 
         checkPartialTakeProfit(currentPrice);
 
