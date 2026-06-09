@@ -94,12 +94,13 @@ public class PriceMonitorService {
 
     private void checkLivePosition(BigDecimal price) {
         if (!orderExecutorService.isEnabled()) return;
+        if (orderExecutorService.getOpenPosition() == null) return;
 
+        orderExecutorService.updateTrailingFromWebSocket(price);
+
+        // Re-fetch setelah trailing update — SL mungkin sudah berubah
         LivePosition position = orderExecutorService.getOpenPosition();
         if (position == null) return;
-
-        // ✅ Update trailing SL dulu sebelum cek hit
-        orderExecutorService.updateTrailingFromWebSocket(price);
 
         if (position.isHitTakeProfit(price)) {
             log.info("🎯 [LIVE WebSocket] TP HIT: {} >= {}",
