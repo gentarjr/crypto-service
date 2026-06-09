@@ -111,6 +111,14 @@ public class EmaSignalService implements SignalService {
                         snapshot.getEmaFast().doubleValue(),
                         snapshot.getEmaSlow().doubleValue())));
 
+        String trend4HCheck = snapshot.getTrend4H();
+        if (trend4HCheck != null && !"BULLISH".equals(trend4HCheck)) {
+            filters.add(SignalFilter.fail("MACRO_4H_BLOCK",
+                    String.format("4H BEARISH — EMA entry blocked, macro downtrend ❌")));
+            return Signal.hold(StrategyType.EMA_CROSSOVER,
+                    "4H downtrend — EMA entry blocked", filters);
+        }
+
         // M4: ATR extreme = hard block
         if ("EXTREME".equals(snapshot.getVolatilityZone())) {
             filters.add(SignalFilter.fail("ATR_EXTREME",
@@ -384,17 +392,16 @@ public class EmaSignalService implements SignalService {
                         String.format("+5pts | Price close to EMA9 (%.2f%% away) — ok",
                                 distFromEma9.doubleValue())));
             } else if (distFromEma9.compareTo(new BigDecimal("1.5")) <= 0) {
-                // ⚠️ Agak jauh
                 score += 0;
                 filters.add(SignalFilter.fail("PULLBACK_ENTRY",
                         String.format("+0pts | Price %.2f%% from EMA9 — extended",
                                 distFromEma9.doubleValue())));
             } else {
-                // ❌ Terlalu jauh dari EMA9 = chasing price!
-                score -= 10;
                 filters.add(SignalFilter.fail("PULLBACK_ENTRY",
-                        String.format("-10pts | Price too far from EMA9 (%.2f%%) — chasing price ❌",
+                        String.format("Price too far from EMA9 (%.2f%%) — chasing price, BLOCKED ❌",
                                 distFromEma9.doubleValue())));
+                return Signal.hold(StrategyType.EMA_CROSSOVER,
+                        "Price too extended from EMA9, wait for pullback", filters);
             }
         } else {
             filters.add(SignalFilter.pass("PULLBACK_ENTRY",
