@@ -33,19 +33,16 @@ public class TradingHoursService {
      * Apakah sekarang dalam jam trading aktif?
      */
     public boolean isWithinTradingHours() {
-        if (!enabled) {
-            return true;  // Kalau disabled, always allow
-        }
+        if (!enabled) return true;
 
-        int currentHourUtc = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).getHour();
-        boolean withinHours = currentHourUtc >= startHourUtc
-                && currentHourUtc < endHourUtc;
+        // FIX: gunakan ZoneOffset.UTC bukan Asia/Jakarta
+        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
+        boolean withinHours = currentHourUtc >= startHourUtc && currentHourUtc < endHourUtc;
 
         if (!withinHours) {
             log.info("Outside trading hours (UTC {}). Active: {}:00-{}:00 UTC",
                     currentHourUtc, startHourUtc, endHourUtc);
         }
-
         return withinHours;
     }
 

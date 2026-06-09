@@ -74,7 +74,7 @@ trading:
     bb-squeeze-threshold: 1.5
     adx-period: 14
     adx-ranging-threshold: 20
-    adx-trending-threshold: 25
+    adx-trending-threshold: 20
     adx-strong-trend-threshold: 40
 
   strategy:
@@ -113,7 +113,7 @@ trading:
     cooldown-minutes: 60          # dari 30
     bb-cooldown-minutes: 30
     max-slippage-percent: 0.8     # dari 0.3
-    partial-tp-enabled: true
+    partial-tp-enabled: false
     partial-tp-ratio: 0.5
 
   sentiment:

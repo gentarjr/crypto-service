@@ -119,13 +119,13 @@ public class OrderExecutorService {
     private boolean dailyHalted = false;
     private Instant lastCloseTime = null;
     private StrategyType lastCloseStrategy = null;
-    private GetIndicatorResponse lastSnapshot = null;
+    private volatile GetIndicatorResponse lastSnapshot = null;
     private boolean lastCloseWasLoss = false;
 
 
     private boolean isWithinTradingHours() {
         if (!tradingHoursEnabled) return true;
-        int hour = java.time.ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).getHour();
+        int hour = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).getHour();
         boolean within = hour >= tradingHourStart && hour < tradingHourEnd;
         if (!within) {
             log.info("🕐 [LIVE] Outside trading hours (UTC {})", hour);
@@ -911,14 +911,15 @@ public class OrderExecutorService {
             // Cancel OCO kalau ada
             if (positionToClose.getOcoOrderListId() != null) {
                 log.info("🗑️ Cancelling OCO before close...");
-                binanceOcoService.cancelOcoOrder(
-                        baseCurrency + quoteCurrency,
-                        positionToClose.getOcoOrderListId());
-                // Tunggu 2 detik supaya OCO cancel diproses
-                try { Thread.sleep(2000); }
-                catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
+                try {
+                    binanceOcoService.cancelOcoOrder(
+                            baseCurrency + quoteCurrency,
+                            positionToClose.getOcoOrderListId());
+                } catch (Exception cancelEx) {
+                    log.warn("⚠️ OCO cancel exception (may already be filled): {}", cancelEx.getMessage());
                 }
+                try { Thread.sleep(500); }
+                catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
             }
 
             // Cek BNB balance setelah cancel OCO
@@ -1347,12 +1348,11 @@ public class OrderExecutorService {
     }
 
     private void updateOcoAfterTrailing(LivePosition position) {
+        String oldOcoId = position.getOcoOrderListId();
         try {
-            String oldOcoId = position.getOcoOrderListId();
 
             binanceOcoService.cancelOcoOrder(
                     baseCurrency + quoteCurrency, oldOcoId);
-            position.setOcoOrderListId(null);
 
             BigDecimal actualBnb;
             try {
@@ -1393,14 +1393,15 @@ public class OrderExecutorService {
                             .build());
 
             if ("SUCCESS".equals(newOco.getStatus())) {
+                position.setOcoOrderListId(null);
                 position.setOcoOrderListId(newOco.getOrderListId());
-                log.info("✅ OCO updated after trailing: SL=${} id={}",
-                        ocoSL, newOco.getOrderListId());
             } else {
                 log.warn("⚠️ OCO update failed: {}", newOco.getErrorMessage());
+                position.setOcoOrderListId(oldOcoId);
             }
         } catch (Exception e) {
             log.error("❌ OCO update error: {}", e.getMessage());
+            position.setOcoOrderListId(oldOcoId);
         }
     }
 

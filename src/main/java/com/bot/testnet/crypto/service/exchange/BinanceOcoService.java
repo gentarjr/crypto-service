@@ -58,8 +58,10 @@ public class BinanceOcoService {
             BigDecimal slPrice = request.getStopLossPrice()
                     .setScale(2, RoundingMode.DOWN);
             // Stop limit sedikit di bawah SL untuk ensure trigger
-            BigDecimal slLimit = slPrice
-                    .multiply(new BigDecimal("0.999"))
+            BigDecimal slGapPct  = slPrice.multiply(new BigDecimal("0.003"));
+            BigDecimal slGapFlat = new BigDecimal("0.50");
+            BigDecimal slLimit   = slPrice
+                    .subtract(slGapPct.max(slGapFlat))
                     .setScale(2, RoundingMode.DOWN);
 
             if (tpPrice.compareTo(slPrice) <= 0) {
