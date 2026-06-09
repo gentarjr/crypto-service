@@ -74,7 +74,7 @@ trading:
     bb-squeeze-threshold: 1.5
     adx-period: 14
     adx-ranging-threshold: 20
-    adx-trending-threshold: 20
+    adx-trending-threshold: 25
     adx-strong-trend-threshold: 40
 
   strategy:
