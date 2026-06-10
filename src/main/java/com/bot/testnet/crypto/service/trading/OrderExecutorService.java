@@ -875,17 +875,11 @@ public class OrderExecutorService {
                             "🎯 [LIVE] Partial Take Profit!",
                             String.format(
                                     "Position #%s\n\n" +
-                                            "Sold: <b>%.2f BNB</b> @ <b>$%.2f</b>\n" +
-                                            "Profit: <b>+$%.4f</b>\n\n" +
-                                            "Remaining: <b>%.2f BNB</b>\n" +
+                                            "Partial TP executed ✅\n" +
                                             "SL moved to: <b>$%.2f</b> (breakeven)\n" +
                                             "TP target: <b>$%.2f</b>\n\n" +
                                             "⏰ %s WIB",
                                     openPosition.getId(),
-                                    partialQty.doubleValue(),
-                                    currentPrice.doubleValue(),
-                                    partialNetProfit.doubleValue(),
-                                    remainingQty.doubleValue(),
                                     newSL.doubleValue(),
                                     openPosition.getTakeProfit().doubleValue(),
                                     formatTime()));
@@ -1081,15 +1075,21 @@ public class OrderExecutorService {
             positionLock.unlock();
         }
 
+        BigDecimal modalBd = balanceService.getTotalCapital();
+
         telegramService.sendMessage(
                 "🛑 [LIVE] Trading HALTED",
                 String.format(
                         "Reason: %s\n" +
-                                "Daily P&L: $%.4f\n" +
+                                "Daily P&L: %s%.2f%%\n" +
                                 "Consecutive losses: %d\n\n" +
                                 "Will resume tomorrow.",
                         reason,
-                        dailyPnl.doubleValue(),
+                        dailyPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
+                        modalBd.compareTo(BigDecimal.ZERO) > 0
+                                ? dailyPnl.divide(modalBd, 4, RoundingMode.HALF_UP)
+                                .multiply(BigDecimal.valueOf(100)).doubleValue()
+                                : 0.0,
                         consecutiveLosses));
     }
 
