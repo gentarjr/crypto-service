@@ -96,7 +96,7 @@ trading:
       rsi-oversold-threshold: 30
       volume-min-multiplier: 0.5
       percent-b-min: -0.1
-      sl-atr-multiplier: 1.0
+      sl-atr-multiplier: 1.5
       tp-atr-multiplier: 1.5
 
   risk:

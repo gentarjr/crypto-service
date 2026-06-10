@@ -1,5 +1,6 @@
 package com.bot.testnet.crypto.service.risk;
 
+import com.bot.testnet.crypto.model.dto.StrategyType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +30,10 @@ public class TrailingStopHelper {
             T position, BigDecimal currentPrice, BigDecimal atr, String label) {
 
         position.updateHighestPrice(currentPrice);
+
+        if (position.getStrategy() == StrategyType.BB_MEAN_REVERSION) {
+            return false;
+        }
 
         if (!position.isTrailingActive()) {
             BigDecimal oneR = position.getEntryPrice()

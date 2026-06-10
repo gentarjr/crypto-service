@@ -1,5 +1,7 @@
 package com.bot.testnet.crypto.service.risk;
 
+import com.bot.testnet.crypto.model.dto.StrategyType;
+
 import java.math.BigDecimal;
 
 /**
@@ -16,4 +18,5 @@ public interface TrailablePosition {
     boolean ratchetStopLoss(BigDecimal newSL);
     BigDecimal calculateTrailingSL(BigDecimal atr, double multiplier);
     BigDecimal getInitialStopLoss();
+    StrategyType getStrategy();
 }

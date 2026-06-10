@@ -698,7 +698,7 @@ public class OrderExecutorService {
         }
 
         // Update trailing SL (EMA strategy only)
-        if (lastSnapshot != null) {
+        if (lastSnapshot != null && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
             boolean trailingUpdated = trailingStopHelper.update(
                     openPosition, currentPrice, lastSnapshot.getAtr(), "LIVE");
 
@@ -772,7 +772,7 @@ public class OrderExecutorService {
             return;
         }
 
-        if (lastSnapshot != null) {
+        if (lastSnapshot != null && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
             boolean trailingUpdated = trailingStopHelper.update(
                     pos, realtimePrice, lastSnapshot.getAtr(), "LIVE");
 
@@ -1359,7 +1359,9 @@ public class OrderExecutorService {
         try {
             if (openPosition == null) return;
             openPosition.updateHighestPrice(price);
-            trailingStopHelper.update(openPosition, price, snapshot.getAtr(), "LIVE-WS"); // ← pakai local
+            if (openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
+                trailingStopHelper.update(openPosition, price, snapshot.getAtr(), "LIVE-WS");
+            }
         } finally {
             positionLock.unlock();
         }
