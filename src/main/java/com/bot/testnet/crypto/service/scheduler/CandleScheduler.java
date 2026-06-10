@@ -76,7 +76,7 @@ public class CandleScheduler {
                 telegramService.sendMessage(
                         "⚠️ [LIVE] Orphan Position Detected!",
                         String.format(
-                                "Ditemukan <b>%.4f BNB</b> saat startup.\n\n" +
+                                "Ditemukan BNB saat startup.\n\n" +
                                         "Kemungkinan ada posisi terbuka dari run sebelumnya.\n\n" +
                                         "Bot TIDAK bisa track posisi ini secara otomatis.\n" +
                                         "Silakan:\n" +
@@ -84,7 +84,6 @@ public class CandleScheduler {
                                         "2. Pasang SL manual jika perlu\n" +
                                         "3. Atau close manual\n\n" +
                                         "⏰ %s WIB",
-                                bnbBalance.doubleValue(),
                                 formatTime()));
             }
 
@@ -101,13 +100,8 @@ public class CandleScheduler {
                                     "   Pair: <b>BNB/USDT</b>\n" +
                                     "   Timeframe: <b>m15</b>\n" +
                                     "   Live Trading: <b>%s</b>\n\n" +
-                                    "💰 USDT Balance: <b>$%.2f</b>\n" +
-                                    "🪙 BNB Balance:  <b>%.4f BNB</b>%s\n\n" +
                                     "⏰ %s WIB",
                             orderExecutorService.isEnabled() ? "ENABLED ✅" : "DISABLED ❌",
-                            usdtBalance.doubleValue(),
-                            bnbBalance.doubleValue(),
-                            warning,
                             formatTime()));
         } catch (Exception e) {
             log.error("Failed to send startup notification: {}", e.getMessage());
@@ -227,7 +221,6 @@ public class CandleScheduler {
                     "☀️ Morning Health Check",
                     String.format(
                             "Status: <b>%s</b>\n\n" +
-                                    "💰 Balance: <b>$%.2f USDT</b>\n\n" +
                                     "Yesterday (Live):\n" +
                                     "   Trades: %d\n" +
                                     "   P&L: <b>$%.4f</b>\n\n" +

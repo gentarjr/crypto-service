@@ -292,11 +292,9 @@ public class OrderExecutorService {
                         "⚠️ [LIVE] Insufficient Balance",
                         String.format(
                                 "USDT tidak cukup untuk trading!\n\n" +
-                                        "Available: <b>$%.2f</b>\n" +
                                         "Minimum: <b>$10</b>\n\n" +
                                         "Cek apakah ada BNB nyangkut di Binance!\n" +
                                         "⏰ %s WIB",
-                                availableUsdt.doubleValue(),
                                 formatTime()));
                 return;
             }
@@ -343,8 +341,7 @@ public class OrderExecutorService {
                         positionSize, availableUsdt);
                 telegramService.sendMessage(
                         "⚠️ [LIVE] Insufficient Balance",
-                        String.format("Need: $%.2f | Available: $%.2f",
-                                positionSize.doubleValue(), availableUsdt.doubleValue()));
+                        "Insufficient balance to open position.");
                 return;
             }
 
@@ -355,7 +352,7 @@ public class OrderExecutorService {
             if (!isQuantitySufficient(quantity)) {
                 log.warn("⚠️ Quantity too small: {} BNB (min 0.01)", quantity);
                 telegramService.sendMessage("⚠️ [LIVE] Order Skipped",
-                        "Quantity too small: " + quantity + " BNB\nIncrease position size.");
+                        "Quantity too small untuk trading. Increase position size.");
                 return;
             }
 
@@ -1131,8 +1128,6 @@ public class OrderExecutorService {
                 String.format(
                         "🆔 #%s | %s\n\n" +
                                 "💰 Entry: <b>$%.4f</b>\n" +
-                                "📦 Qty: <b>%.3f %s</b>\n" +
-                                "💵 Value: <b>$%.2f</b>\n\n" +
                                 "🛑 SL: <b>$%.4f</b>\n" +
                                 "🎯 TP: <b>%s</b>\n\n" +
                                 "%s\n" +
@@ -1140,9 +1135,6 @@ public class OrderExecutorService {
                         position.getId(),
                         strategy,
                         position.getEntryPrice().doubleValue(),
-                        position.getQuantity().doubleValue(),
-                        baseCurrency,
-                        position.getPositionValue().doubleValue(),
                         position.getStopLoss().doubleValue(),
                         position.getTakeProfit() != null
                                 ? String.format("$%.4f", position.getTakeProfit().doubleValue())
@@ -1263,6 +1255,13 @@ public class OrderExecutorService {
                 ? position.getFee() : BigDecimal.ZERO;
         BigDecimal grossPnl = position.getRealizedPnl().add(fee);
 
+        BigDecimal modalBd = balanceService.getTotalCapital();
+        BigDecimal dailyPct = modalBd.compareTo(BigDecimal.ZERO) > 0
+                ? dailyPnl.divide(modalBd, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                : BigDecimal.ZERO;
+        String dailySign = dailyPct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "";
+
         telegramService.sendMessage(
                 emoji + " [LIVE] " + position.getCloseReason(),
                 String.format(
@@ -1272,7 +1271,7 @@ public class OrderExecutorService {
                                 "%s Gross P&L: <b>%s$%.4f</b>\n" +
                                 "💸 Fee:      <b>-$%.4f</b>\n" +
                                 "📊 Net P&L:  <b>%s$%.4f (%s%.2f%%)</b>\n\n" +
-                                "📈 Today P&L: <b>%s$%.4f</b>\n" +
+                                "📈 Today P&L: <b>%s%.2f%%</b>\n" +
                                 "🔁 Consec losses: <b>%d</b>\n\n" +
                                 "⏰ %s WIB",
                         position.getId(),
@@ -1289,8 +1288,8 @@ public class OrderExecutorService {
                                 && position.getPnlPercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
                         position.getPnlPercent() != null
                                 ? position.getPnlPercent().doubleValue() : 0.0,
-                        dailyPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
-                        dailyPnl.doubleValue(),
+                        dailySign,
+                        dailyPct.doubleValue(),
                         consecutiveLosses,
                         formatTime()));
     }

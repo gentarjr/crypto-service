@@ -96,8 +96,6 @@ public class DailySummaryScheduler {
             StringBuilder msg = new StringBuilder();
             msg.append(String.format("📋 Total Trades: <b>%d</b>\n",
                     orderExecutorService.getClosedCount()));
-            msg.append(String.format("💰 Daily P&L: <b>$%.4f</b>\n",
-                    orderExecutorService.getDailyPnl().doubleValue()));
             msg.append(String.format("🔄 Consecutive Losses: <b>%d</b>\n",
                     orderExecutorService.getConsecutiveLosses()));
             msg.append(String.format("🤖 Status: <b>%s</b>\n",
