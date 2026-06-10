@@ -1250,11 +1250,6 @@ public class OrderExecutorService {
         boolean isWin = position.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0;
         String emoji  = isWin ? "✅" : "❌";
 
-        // Gross P&L = pnlAfterFee + fee
-        BigDecimal fee      = position.getFee() != null
-                ? position.getFee() : BigDecimal.ZERO;
-        BigDecimal grossPnl = position.getRealizedPnl().add(fee);
-
         BigDecimal modalBd = balanceService.getTotalCapital();
         BigDecimal dailyPct = modalBd.compareTo(BigDecimal.ZERO) > 0
                 ? dailyPnl.divide(modalBd, 4, RoundingMode.HALF_UP)
@@ -1268,9 +1263,7 @@ public class OrderExecutorService {
                         "🆔 #%s | %s\n\n" +
                                 "💰 Entry:  <b>$%.4f</b>\n" +
                                 "💰 Exit:   <b>$%.4f</b>\n\n" +
-                                "%s Gross P&L: <b>%s$%.4f</b>\n" +
-                                "💸 Fee:      <b>-$%.4f</b>\n" +
-                                "📊 Net P&L:  <b>%s$%.4f (%s%.2f%%)</b>\n\n" +
+                                "📊 Net P&L:  <b>%s%.2f%%</b>\n\n" +
                                 "📈 Today P&L: <b>%s%.2f%%</b>\n" +
                                 "🔁 Consec losses: <b>%d</b>\n\n" +
                                 "⏰ %s WIB",
@@ -1278,12 +1271,6 @@ public class OrderExecutorService {
                         position.getStrategy(),
                         position.getEntryPrice().doubleValue(),
                         position.getClosePrice().doubleValue(),
-                        isWin ? "📈" : "📉",
-                        grossPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
-                        grossPnl.doubleValue(),
-                        fee.doubleValue(),
-                        position.getRealizedPnl().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
-                        position.getRealizedPnl().doubleValue(),
                         position.getPnlPercent() != null
                                 && position.getPnlPercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
                         position.getPnlPercent() != null
