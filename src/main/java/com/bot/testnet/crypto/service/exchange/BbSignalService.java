@@ -86,6 +86,25 @@ public class BbSignalService implements SignalService {
                     "Extreme volatility — circuit breaker", filters);
         }
 
+        List<Candle> candles = snapshot.getRecentCandles();
+        if (candles != null && !candles.isEmpty()) {
+            Candle lastCandle = candles.get(candles.size() - 1);
+            if (!lastCandle.isBullish()) {
+                filters.add(SignalFilter.fail("CANDLE_CONFIRM",
+                        String.format("Candle BEARISH (open=%.2f close=%.2f) — tunggu reversal ❌",
+                                lastCandle.getOpen().doubleValue(),
+                                lastCandle.getClose().doubleValue())));
+                return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                        "No bullish candle confirmation", filters);
+            }
+            filters.add(SignalFilter.pass("CANDLE_CONFIRM",
+                    String.format("Candle BULLISH (open=%.2f close=%.2f) ✅",
+                            lastCandle.getOpen().doubleValue(),
+                            lastCandle.getClose().doubleValue())));
+        } else {
+            filters.add(SignalFilter.pass("CANDLE_CONFIRM", "No candle data — skip check"));
+        }
+
         // M3: Falling knife protection (hard block)
         double percentB = snapshot.getBbPercentB().doubleValue();
         if (percentB < percentBMin) {
@@ -97,6 +116,21 @@ public class BbSignalService implements SignalService {
         }
         filters.add(SignalFilter.pass("FALLING_KNIFE",
                 String.format("%%B %.4f ≥ %.2f ✅", percentB, percentBMin)));
+
+
+        // M4: Volume minimum — reversal tanpa volume = tidak reliable
+        BigDecimal volRatioBd = snapshot.getVolumeRatio();
+        if (volRatioBd != null) {
+            double vr = volRatioBd.doubleValue();
+            if (vr < 0.7) {
+                filters.add(SignalFilter.fail("VOLUME_MIN",
+                        String.format("Volume %.2fx < 0.7x avg — reversal tidak reliable ❌", vr)));
+                return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                        "Volume too low for reliable reversal", filters);
+            }
+            filters.add(SignalFilter.pass("VOLUME_MIN",
+                    String.format("Volume %.2fx ≥ 0.7x ✅", vr)));
+        }
 
         // ═══════════════════════════════════════
         // SCORING — menambah confidence

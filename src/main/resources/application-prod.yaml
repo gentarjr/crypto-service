@@ -81,7 +81,7 @@ trading:
     ema:
       enabled: true
       volume-surge-multiplier: 1.5
-      rsi-max-threshold: 70
+      rsi-max-threshold: 60
       price-extension-max: 1.015
       atr-extreme-multiplier: 2.5
       buy-score-threshold: 65
@@ -94,13 +94,13 @@ trading:
       strong-buy-score-threshold: 80
       enabled: true
       rsi-oversold-threshold: 30
-      volume-min-multiplier: 0.5
+      volume-min-multiplier: 0.7
       percent-b-min: -0.1
       sl-atr-multiplier: 1.5
       tp-atr-multiplier: 1.5
 
   risk:
-    timeout-hours: 4              # default timeout
+    timeout-hours: 2              # default timeout
     timeout-profit-threshold: 0.5
     modal: 300                  # fallback kalau tidak bisa fetch balance
     sl-atr-multiplier: 1.5
