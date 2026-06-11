@@ -218,7 +218,7 @@ public class SentimentService {
         refreshFearAndGreed();
     }
 
-    private void refreshLunarCrush() {
+    private synchronized void refreshLunarCrush() {
         if (!lunarcrushEnabled) {
             log.debug("LunarCrush disabled, skipping");
             return;
@@ -271,7 +271,7 @@ public class SentimentService {
         }
     }
 
-    private void refreshFearAndGreed() {
+    private synchronized void refreshFearAndGreed() {
         // Update FNG tiap 6 jam (update harian, tidak perlu sering)
         if (Instant.now().isBefore(lastFetchFNG.plusSeconds(6 * 3600))) return;
         try {
