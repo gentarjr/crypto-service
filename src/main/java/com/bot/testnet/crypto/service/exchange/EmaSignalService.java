@@ -358,20 +358,24 @@ public class EmaSignalService implements SignalService {
             }
         }
 
-        // S9: Candle Pattern Recognition
+        // S9: CATEGORY_PATTERN — Candle Pattern Recognition
+        boolean patternGreen = false;
         List<Candle> recentCandles = snapshot.getRecentCandles();
         if (recentCandles != null && recentCandles.size() >= 2) {
             if (recentCandles.size() >= 3
                     && candlePatternHelper.isMorningStar(recentCandles)) {
                 score += 20;
+                patternGreen = true;
                 filters.add(SignalFilter.pass("CANDLE_PATTERN",
                         "+20pts | Morning Star pattern ✅ (strong reversal)"));
             } else if (candlePatternHelper.isBullishEngulfing(recentCandles)) {
                 score += 15;
+                patternGreen = true;
                 filters.add(SignalFilter.pass("CANDLE_PATTERN",
                         "+15pts | Bullish Engulfing pattern ✅"));
             } else if (candlePatternHelper.isHammer(recentCandles)) {
                 score += 10;
+                patternGreen = true;
                 filters.add(SignalFilter.pass("CANDLE_PATTERN",
                         "+10pts | Hammer pattern ✅"));
             } else if (candlePatternHelper.isStrongBearish(recentCandles)) {
@@ -390,6 +394,7 @@ public class EmaSignalService implements SignalService {
             filters.add(SignalFilter.pass("CANDLE_PATTERN",
                     "+0pts | No candle data available"));
         }
+        if (patternGreen) confluenceGreen++;
 
         // S12: Anti-Whipsaw — EMA9 harus di atas EMA21
         BigDecimal emaFast = snapshot.getEmaFast(); // EMA9
