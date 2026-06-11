@@ -56,6 +56,8 @@ public class SentimentService {
     private long previousInteractions = 0;
 
     private volatile boolean isFetching = false;
+    private final Object lcLock  = new Object();
+    private final Object fngLock = new Object();
 
     // ═══════════════════════════════════════════════════════
     // PUBLIC METHODS
@@ -218,75 +220,78 @@ public class SentimentService {
         refreshFearAndGreed();
     }
 
-    private synchronized void refreshLunarCrush() {
-        if (!lunarcrushEnabled) {
-            log.debug("LunarCrush disabled, skipping");
-            return;
-        }
-
-        if (cachedLC != null &&
-                Instant.now().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
-            return;
-        }
-        isFetching = true;
-        try {
-            String url = "https://lunarcrush.com/api4/public/topic/" + topic + "/v1";
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + apiKey);
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-
-            ResponseEntity<LunarCrushResponse> resp = restTemplate.exchange(
-                    url, HttpMethod.GET, entity, LunarCrushResponse.class);
-
-            if (resp.getBody() != null && resp.getBody().getData() != null) {
-                LunarCrushTopicData d = resp.getBody().getData();
-
-                // Simpan previous interactions untuk spike detection
-                if (cachedLC != null) {
-                    previousInteractions = cachedLC.interactions24h;
-                }
-
-                LunarCrushData newData = new LunarCrushData();
-                newData.trend           = d.getTrend() != null ? d.getTrend() : "flat";
-                newData.interactions24h = d.getInteractions24h();
-                newData.numPosts        = d.getNumPosts();
-                newData.numContributors = d.getNumContributors();
-
-                // Platform-specific weighted sentiment
-                newData.weightedSentiment = calcWeightedSentiment(
-                        d.getTypesSentiment(),
-                        d.getTypesInteractions());
-
-                cachedLC    = newData;
-                lastFetchLC = ZonedDateTime.now(ZoneOffset.UTC).toInstant();
-
-                double spikeChg = getSocialVolumeChangePercent();
-                log.info("📊 [LUNARCRUSH] BNB: sentiment={}, trend={}, interactions={}, spike={}%",
-                        newData.weightedSentiment, newData.trend,
-                        newData.interactions24h,
-                        String.format("%.1f", spikeChg));
+    private void refreshLunarCrush() {
+        synchronized(lcLock) {
+            if (!lunarcrushEnabled) {
+                log.debug("LunarCrush disabled, skipping");
+                return;
             }
-        } finally {
-            isFetching = false;
+
+            if (cachedLC != null &&
+                    Instant.now().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
+                return;
+            }
+            isFetching = true;
+            try {
+                String url = "https://lunarcrush.com/api4/public/topic/" + topic + "/v1";
+                HttpHeaders headers = new HttpHeaders();
+                headers.set("Authorization", "Bearer " + apiKey);
+                HttpEntity<String> entity = new HttpEntity<>(headers);
+
+                ResponseEntity<LunarCrushResponse> resp = restTemplate.exchange(
+                        url, HttpMethod.GET, entity, LunarCrushResponse.class);
+
+                if (resp.getBody() != null && resp.getBody().getData() != null) {
+                    LunarCrushTopicData d = resp.getBody().getData();
+
+                    // Simpan previous interactions untuk spike detection
+                    if (cachedLC != null) {
+                        previousInteractions = cachedLC.interactions24h;
+                    }
+
+                    LunarCrushData newData = new LunarCrushData();
+                    newData.trend = d.getTrend() != null ? d.getTrend() : "flat";
+                    newData.interactions24h = d.getInteractions24h();
+                    newData.numPosts = d.getNumPosts();
+                    newData.numContributors = d.getNumContributors();
+
+                    // Platform-specific weighted sentiment
+                    newData.weightedSentiment = calcWeightedSentiment(
+                            d.getTypesSentiment(),
+                            d.getTypesInteractions());
+
+                    cachedLC = newData;
+                    lastFetchLC = ZonedDateTime.now(ZoneOffset.UTC).toInstant();
+
+                    double spikeChg = getSocialVolumeChangePercent();
+                    log.info("📊 [LUNARCRUSH] BNB: sentiment={}, trend={}, interactions={}, spike={}%",
+                            newData.weightedSentiment, newData.trend,
+                            newData.interactions24h,
+                            String.format("%.1f", spikeChg));
+                }
+            } finally {
+                isFetching = false;
+            }
         }
     }
 
-    private synchronized void refreshFearAndGreed() {
-        // Update FNG tiap 6 jam (update harian, tidak perlu sering)
-        if (Instant.now().isBefore(lastFetchFNG.plusSeconds(6 * 3600))) return;
-        try {
-            FearGreedResponse resp = restTemplate.getForObject(
-                    "https://api.alternative.me/fng/?limit=1",
-                    FearGreedResponse.class);
+    private void refreshFearAndGreed() {
+        synchronized(fngLock) {
+            if (Instant.now().isBefore(lastFetchFNG.plusSeconds(6 * 3600))) return;
+            try {
+                FearGreedResponse resp = restTemplate.getForObject(
+                        "https://api.alternative.me/fng/?limit=1",
+                        FearGreedResponse.class);
 
-            if (resp != null && resp.getData() != null && !resp.getData().isEmpty()) {
-                cachedFNG      = Integer.parseInt(resp.getData().get(0).getValue());
-                cachedFNGLabel = resp.getData().get(0).getValueClassification();
-                lastFetchFNG   = ZonedDateTime.now(ZoneOffset.UTC).toInstant();
-                log.info("📊 [FEAR&GREED] Score: {} ({})", cachedFNG, cachedFNGLabel);
+                if (resp != null && resp.getData() != null && !resp.getData().isEmpty()) {
+                    cachedFNG      = Integer.parseInt(resp.getData().get(0).getValue());
+                    cachedFNGLabel = resp.getData().get(0).getValueClassification();
+                    lastFetchFNG   = ZonedDateTime.now(ZoneOffset.UTC).toInstant();
+                    log.info("📊 [FEAR&GREED] Score: {} ({})", cachedFNG, cachedFNGLabel);
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ Fear&Greed fetch failed: {} — using cache", e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("⚠️ Fear&Greed fetch failed: {} — using cache", e.getMessage());
         }
     }
 
