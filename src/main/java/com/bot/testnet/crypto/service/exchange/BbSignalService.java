@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +57,9 @@ public class BbSignalService implements SignalService {
 
     @Value("${trading.strategy.bb.tp-atr-multiplier:1.0}")
     private double tpAtrMultiplier;
+
+    @Value("${trading.strategy.bb.min-confluence-categories:3}")
+    private int minConfluenceCategories;
 
     @Override
     public Signal evaluate(GetIndicatorResponse snapshot) {
@@ -132,18 +136,40 @@ public class BbSignalService implements SignalService {
                     String.format("Volume %.2fx ≥ 0.7x ✅", vr)));
         }
 
+        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
+        boolean isDeadZone  = currentHourUtc >= 0 && currentHourUtc < 6;
+        boolean isPreLondon = currentHourUtc >= 6 && currentHourUtc < 8;
+
+        if (isDeadZone) {
+            filters.add(SignalFilter.fail("SESSION_FILTER",
+                    String.format("UTC %02d:xx — DEAD ZONE (00:00–06:00 UTC) ❌ No new positions", currentHourUtc)));
+            return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                    "Dead zone — no new BB positions (00:00–06:00 UTC)", filters);
+        }
+
+        if (isPreLondon) {
+            filters.add(SignalFilter.pass("SESSION_FILTER",
+                    String.format("UTC %02d:xx — Pre-London ⚠️ Elevated threshold applies", currentHourUtc)));
+        } else {
+            filters.add(SignalFilter.pass("SESSION_FILTER",
+                    String.format("UTC %02d:xx — Active session ✅", currentHourUtc)));
+        }
+
         // ═══════════════════════════════════════
         // SCORING — menambah confidence
         // ═══════════════════════════════════════
+
+        int confluenceGreen = 0;
 
         BigDecimal currentPrice = snapshot.getCurrentPrice();
         BigDecimal bbLower = snapshot.getBbLower();
         BigDecimal bbMiddle = snapshot.getBbMiddle();
 
-        // S1: BB position scoring (paling penting di BB strategy)
-        // Harga di lower band atau mendekati = lebih bagus
+        // S1: CATEGORY_POSITION — BB position scoring
+        boolean positionGreen = false;
         if (currentPrice.compareTo(bbLower) <= 0) {
             score += 35;
+            positionGreen = true;
             filters.add(SignalFilter.pass("BB_POSITION",
                     String.format("+35pts | Price $%.2f ≤ Lower BB $%.2f (extreme oversold ✅)",
                             currentPrice.doubleValue(), bbLower.doubleValue())));
@@ -155,13 +181,16 @@ public class BbSignalService implements SignalService {
 
             if (gapPctVal <= 0.5) {
                 score += 10;
+                positionGreen = true;
                 filters.add(SignalFilter.pass("BB_POSITION",
                         String.format("+10pts | Price %.2f%% above lower band ✅", gapPctVal)));
             } else {
+                score += 0;
                 filters.add(SignalFilter.fail("BB_POSITION",
-                        String.format("+0pts | Price %.2f%% above lower band (not a valid bounce)", gapPctVal)));
+                        String.format("+0pts | Price %.2f%% above lower band — not close enough", gapPctVal)));
             }
         }
+        if (positionGreen) confluenceGreen++;
 
         // S2: RSI scoring (oversold = lebih bagus)
         double rsi = snapshot.getRsi().doubleValue();
@@ -201,14 +230,17 @@ public class BbSignalService implements SignalService {
             filters.add(SignalFilter.fail("BULLISH_CANDLE", "+0pts | No candle data"));
         }
 
-        // S4: Volume scoring
+        // S4: CATEGORY_VOLUME — volume scoring
+        boolean volumeGreen = false;
         double volRatio = snapshot.getVolumeRatio().doubleValue();
         if (volRatio >= 1.5) {
             score += 15;
+            volumeGreen = true;
             filters.add(SignalFilter.pass("VOLUME",
                     String.format("+15pts | Volume surge %.2fx (reversal confirmed ✅)", volRatio)));
         } else if (volRatio >= volumeMinMultiplier) {
             score += 10;
+            volumeGreen = true;
             filters.add(SignalFilter.pass("VOLUME",
                     String.format("+10pts | Volume ok %.2fx ≥ %.1fx ✅",
                             volRatio, volumeMinMultiplier)));
@@ -217,9 +249,8 @@ public class BbSignalService implements SignalService {
                     String.format("+0pts | Volume too low %.2fx < %.1fx",
                             volRatio, volumeMinMultiplier)));
         }
+        if (volumeGreen) confluenceGreen++;
 
-        // S5: BB width scoring (ranging = BB narrow = mean reversion lebih reliable)
-        // %B antara -0.1 dan 0.3 = deep in lower zone
         // S5: %B scoring — harga harus di zona bawah
         if (percentB < 0) {
             // Harga di bawah lower band = perfect
@@ -256,7 +287,6 @@ public class BbSignalService implements SignalService {
         }
 
         // S7: Social Sentiment — REVERSED LOGIC untuk BB
-        // BB = mean reversion, suka market FEARFUL (oversold bounce)
         if (sentimentService != null && sentimentService.isEnabled()) {
 
             // Hard block: market terlalu greedy untuk BB reversal
@@ -293,22 +323,26 @@ public class BbSignalService implements SignalService {
             } else {
                 filters.add(SignalFilter.fail("SENTIMENT", reason));
             }
+            if (sentimentBonus >= 0) confluenceGreen++;
         }
 
-        // S9: Candle Pattern Recognition
+        // S9: CATEGORY_REVERSAL — Candle Pattern Recognition
+        boolean reversalGreen = false;
         List<Candle> recentCandles = snapshot.getRecentCandles();
         if (recentCandles != null && recentCandles.size() >= 2) {
-            if (recentCandles.size() >= 3
-                    && candlePatternHelper.isMorningStar(recentCandles)) {
+            if (recentCandles.size() >= 3 && candlePatternHelper.isMorningStar(recentCandles)) {
                 score += 20;
+                reversalGreen = true;
                 filters.add(SignalFilter.pass("CANDLE_PATTERN",
                         "+20pts | Morning Star pattern ✅ (strong reversal)"));
             } else if (candlePatternHelper.isBullishEngulfing(recentCandles)) {
                 score += 15;
+                reversalGreen = true;
                 filters.add(SignalFilter.pass("CANDLE_PATTERN",
                         "+15pts | Bullish Engulfing pattern ✅"));
             } else if (candlePatternHelper.isHammer(recentCandles)) {
                 score += 10;
+                reversalGreen = true;
                 filters.add(SignalFilter.pass("CANDLE_PATTERN",
                         "+10pts | Hammer pattern ✅"));
             } else if (candlePatternHelper.isStrongBearish(recentCandles)) {
@@ -321,15 +355,14 @@ public class BbSignalService implements SignalService {
                         "-5pts | Doji — market indecision"));
             } else {
                 filters.add(SignalFilter.pass("CANDLE_PATTERN",
-                        "+0pts | No significant pattern"));
+                        "+0pts | No notable pattern"));
             }
         } else {
-            filters.add(SignalFilter.pass("CANDLE_PATTERN",
-                    "+0pts | No candle data"));
+            filters.add(SignalFilter.fail("BULLISH_CANDLE", "+0pts | No candle data"));
         }
+        if (reversalGreen) confluenceGreen++;
 
         // S10: Falling Knife Memory — cek 3 candle terakhir
-        // Kalau 2 dari 3 candle terakhir bearish kuat = masih falling knife
         if (recentCandles != null && recentCandles.size() >= 3) {
             long bearishCount = recentCandles.stream()
                     .filter(c -> c.isBearish()
@@ -352,14 +385,15 @@ public class BbSignalService implements SignalService {
             }
         }
 
+        // CATEGORY_MOMENTUM — Price momentum
+        boolean momentumGreen = false;
         if (recentCandles != null && recentCandles.size() >= 2) {
-            BigDecimal lastClose = recentCandles
-                    .get(recentCandles.size() - 1).getClose();
-            BigDecimal prevClose = recentCandles
-                    .get(recentCandles.size() - 2).getClose();
+            BigDecimal lastClose = recentCandles.get(recentCandles.size() - 1).getClose();
+            BigDecimal prevClose = recentCandles.get(recentCandles.size() - 2).getClose();
 
             if (lastClose.compareTo(prevClose) > 0) {
                 score += 10;
+                momentumGreen = true;
                 filters.add(SignalFilter.pass("PRICE_MOMENTUM",
                         String.format("+10pts | Price momentum UP $%.2f → $%.2f ✅",
                                 prevClose.doubleValue(), lastClose.doubleValue())));
@@ -369,10 +403,10 @@ public class BbSignalService implements SignalService {
                         String.format("-10pts | Price momentum DOWN $%.2f → $%.2f ❌",
                                 prevClose.doubleValue(), lastClose.doubleValue())));
             } else {
-                filters.add(SignalFilter.pass("PRICE_MOMENTUM",
-                        "+0pts | Price flat"));
+                filters.add(SignalFilter.pass("PRICE_MOMENTUM", "+0pts | Price flat"));
             }
         }
+        if (momentumGreen) confluenceGreen++;
 
         // ═══════════════════════════════════════
         // DECISION
@@ -380,14 +414,27 @@ public class BbSignalService implements SignalService {
         score = Math.min(score, 100);  // ✅ TAMBAH INI
         log.info("📊 [BB] Score: {}/100 | Threshold: {}", score, buyScoreThreshold);
 
-        if (score < buyScoreThreshold) {
+        int effectiveBuyThreshold       = isPreLondon ? buyScoreThreshold + 10       : buyScoreThreshold;
+        int effectiveStrongBuyThreshold  = isPreLondon ? strongBuyScoreThreshold + 10  : strongBuyScoreThreshold;
+
+        if (score < effectiveBuyThreshold) {
             return Signal.hold(StrategyType.BB_MEAN_REVERSION,
-                    String.format("Score %d < %d (need %d more points)",
-                            score, buyScoreThreshold, buyScoreThreshold - score),
+                    String.format("Score %d < %d%s (need %d more points)",
+                            score, effectiveBuyThreshold,
+                            isPreLondon ? " [Pre-London elevated]" : "",
+                            effectiveBuyThreshold - score),
                     filters);
         }
 
-        double posMultiplier = score >= strongBuyScoreThreshold ? 1.0 : 0.75;
+        if (confluenceGreen < minConfluenceCategories) {
+            return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                    String.format("Confluence insufficient: %d/%d categories green (need %d) ❌",
+                            confluenceGreen, 5, minConfluenceCategories),
+                    filters);
+        }
+        log.info("✅ [BB] Confluence passed: {}/{} categories green", confluenceGreen, 5);
+
+        double posMultiplier = score >= effectiveStrongBuyThreshold ? 1.0 : 0.75;
         return buildBuySignal(snapshot, filters, score, posMultiplier);
     }
 

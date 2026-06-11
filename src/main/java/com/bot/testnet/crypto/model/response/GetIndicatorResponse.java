@@ -62,6 +62,7 @@ public class GetIndicatorResponse {
     private BigDecimal currentPrice4H;  // harga close 4H terakhir
 
     private List<Candle> recentCandles;
+    private List<Candle> allCandles;
 
     /**
      * Helper: gap antara EMA fast dan slow

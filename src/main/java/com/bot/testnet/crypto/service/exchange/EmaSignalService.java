@@ -3,6 +3,7 @@ package com.bot.testnet.crypto.service.exchange;
 import com.bot.testnet.crypto.model.dto.*;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.service.indicator.CandlePatternHelper;
+import com.bot.testnet.crypto.service.indicator.MarketStructureService;
 import com.bot.testnet.crypto.service.indicator.MultiTimeframeService;
 import com.bot.testnet.crypto.service.indicator.SentimentService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class EmaSignalService implements SignalService {
     private final BalanceService balanceService;
     private final SentimentService sentimentService;
     private final CandlePatternHelper candlePatternHelper;
+    private final MarketStructureService marketStructureService;
 
     // ─── Config ───────────────────────────────────────
     @Value("${trading.indicators.adx-trending-threshold:25}")
@@ -62,6 +64,9 @@ public class EmaSignalService implements SignalService {
 
     @Value("${trading.mta.enabled:true}")
     private boolean mtaEnabled;
+
+    @Value("${trading.strategy.ema.min-confluence-categories:3}")
+    private int minConfluenceCategories;
 
     // ─── Evaluate ─────────────────────────────────────
     @Override
@@ -127,68 +132,137 @@ public class EmaSignalService implements SignalService {
             return Signal.hold(StrategyType.EMA_CROSSOVER, "Extreme volatility", filters);
         }
 
+        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
+        boolean isDeadZone = currentHourUtc >= 0 && currentHourUtc < 6;
+        boolean isPreLondon = currentHourUtc >= 6 && currentHourUtc < 8;
+
+        if (isDeadZone) {
+            filters.add(SignalFilter.fail("SESSION_FILTER",
+                    String.format("UTC %02d:xx — DEAD ZONE (00:00–06:00 UTC) ❌ No new positions", currentHourUtc)));
+            return Signal.hold(StrategyType.EMA_CROSSOVER,
+                    "Dead zone — no new EMA positions (00:00–06:00 UTC)", filters);
+        }
+
+        if (isPreLondon) {
+            filters.add(SignalFilter.pass("SESSION_FILTER",
+                    String.format("UTC %02d:xx — Pre-London (06:00–08:00 UTC) ⚠️ Elevated threshold applies", currentHourUtc)));
+        } else {
+            filters.add(SignalFilter.pass("SESSION_FILTER",
+                    String.format("UTC %02d:xx — Active session ✅", currentHourUtc)));
+        }
+
+        // M6: MARKET STRUCTURE — hard block kalau bearish structure terkonfirmasi
+        List<Candle> structureCandles = snapshot.getRecentCandles();
+        MarketStructureService.StructureResult structureResult = MarketStructureService.StructureResult.NEUTRAL;
+
+        List<Candle> allCachedCandles = snapshot.getAllCandles();
+        if (allCachedCandles != null && !allCachedCandles.isEmpty()) {
+            structureResult = marketStructureService.analyze(allCachedCandles);
+        } else {
+            log.debug("📐 Market structure: no allCandles in snapshot, skip structure check");
+        }
+
+        switch (structureResult) {
+            case BEARISH -> {
+                filters.add(SignalFilter.fail("MARKET_STRUCTURE",
+                        "BEARISH structure (LH+LL confirmed) — hard block ❌ No buy in downtrend"));
+                return Signal.hold(StrategyType.EMA_CROSSOVER,
+                        "Bearish market structure — entry blocked", filters);
+            }
+            case CHANGE_OF_CHARACTER -> {
+                filters.add(SignalFilter.fail("MARKET_STRUCTURE",
+                        "CHoCH detected — structure may be reversing ⚠️ hard block"));
+                return Signal.hold(StrategyType.EMA_CROSSOVER,
+                        "Change of Character — waiting for structure to confirm", filters);
+            }
+            case BREAK_OF_STRUCTURE -> {
+                filters.add(SignalFilter.pass("MARKET_STRUCTURE",
+                        "+0pts | BOS detected — scored in SCORING section"));
+                // Tidak return — lanjut ke scoring
+            }
+            case BULLISH -> {
+                filters.add(SignalFilter.pass("MARKET_STRUCTURE",
+                        "+0pts | Bullish structure — scored in SCORING section"));
+                // Tidak return — lanjut ke scoring
+            }
+            default -> {
+                filters.add(SignalFilter.pass("MARKET_STRUCTURE",
+                        "+0pts | Structure NEUTRAL — insufficient data, no block"));
+                // Tidak return — tidak ada efek
+            }
+        }
+
         // ═══════════════════════════════════════
         // SCORING — menambah confidence
         // ═══════════════════════════════════════
+        int confluenceGreen = 0;
 
         // S1: Golden Cross (+30) atau trend continuation (+10)
+        boolean momentumGreen = false;
         if (snapshot.isGoldenCross()) {
             score += 30;
+            momentumGreen = true;
             filters.add(SignalFilter.pass("GOLDEN_CROSS",
                     String.format("+30pts | Golden cross! EMA9=%.4f crossed EMA21=%.4f ✅",
                             snapshot.getEmaFast().doubleValue(),
                             snapshot.getEmaSlow().doubleValue())));
         } else {
             score += 10;
+            momentumGreen = true; // continuation juga green
             filters.add(SignalFilter.pass("EMA_CONTINUATION",
                     String.format("+10pts | EMA uptrend continuing (EMA9=%.4f > EMA21=%.4f)",
                             snapshot.getEmaFast().doubleValue(),
                             snapshot.getEmaSlow().doubleValue())));
         }
+        if (momentumGreen) confluenceGreen++;
 
         // S2: Volume scoring
-        // S2: Volume scoring — tambah guard minimum
+        boolean volumeGreen = false;
         double volRatio = snapshot.getVolumeRatio().doubleValue();
         if (volRatio >= 1.5) {
             score += 20;
+            volumeGreen = true;
             filters.add(SignalFilter.pass("VOLUME",
                     String.format("+20pts | Volume surge %.2fx ≥ 1.5x ✅", volRatio)));
         } else if (volRatio >= 1.0) {
             score += 10;
+            volumeGreen = true;
             filters.add(SignalFilter.pass("VOLUME",
                     String.format("+10pts | Volume ok %.2fx ≥ 1.0x", volRatio)));
         } else if (volRatio >= 0.7) {
-            // ✅ Partial — tidak 0, tidak full
             score += 0;
             filters.add(SignalFilter.fail("VOLUME",
                     String.format("+0pts | Volume below average %.2fx (0.7-1.0x caution)", volRatio)));
         } else {
-            // ✅ Volume sangat rendah = signal tidak reliable
-            score -= 5;  // ← Penalty! Kurangi score
+            score -= 5;
             filters.add(SignalFilter.fail("VOLUME",
                     String.format("-5pts | Volume very low %.2fx < 0.7x (unreliable signal)", volRatio)));
         }
+        if (volumeGreen) confluenceGreen++;
 
         // S3: RSI scoring
+        boolean timingGreen = false;
         double rsi = snapshot.getRsi().doubleValue();
         if (rsi >= 40 && rsi <= 60) {
             score += 15;
+            timingGreen = true;
             filters.add(SignalFilter.pass("RSI",
                     String.format("+15pts | RSI %.2f in sweet spot (40-60) ✅", rsi)));
         } else if (rsi < 65) {
             score += 10;
+            timingGreen = true;
             filters.add(SignalFilter.pass("RSI",
                     String.format("+10pts | RSI %.2f ok (< 65)", rsi)));
         } else if (rsi < rsiMaxThreshold) {
-            score += 3;  // ← dikurangi dari 10 ke 3
+            score += 3;
             filters.add(SignalFilter.pass("RSI",
                     String.format("+3pts | RSI %.2f elevated (65-70) caution", rsi)));
         } else {
-            score -= 10; // ← penalty untuk overbought!
+            score -= 10;
             filters.add(SignalFilter.fail("RSI",
-                    String.format("-10pts | RSI %.2f overbought (≥ %.0f) ❌",
-                            rsi, rsiMaxThreshold)));
+                    String.format("-10pts | RSI %.2f overbought (≥ %.0f) ❌", rsi, rsiMaxThreshold)));
         }
+        if (timingGreen) confluenceGreen++;
 
         // S4: Volatility scoring
         String volZone = snapshot.getVolatilityZone();
@@ -284,23 +358,6 @@ public class EmaSignalService implements SignalService {
                 filters.add(SignalFilter.fail("SENTIMENT", reason));
             }
         }
-        // Di EmaSignalService — tambah scoring:
-        int currentHourUtc = ZonedDateTime.now(ZoneOffset.UTC).getHour();
-        // ✅ Peak hours: Asia (1-4), London (8-12), NY (13-17)
-        boolean isPeakHour = (currentHourUtc >= 1 && currentHourUtc <= 4)
-                || (currentHourUtc >= 8 && currentHourUtc <= 12)
-                || (currentHourUtc >= 13 && currentHourUtc <= 17);
-
-        if (isPeakHour) {
-            score += 5;
-            filters.add(SignalFilter.pass("PEAK_HOURS",
-                    String.format("+5pts | Trading in peak hours (UTC %d) ✅",
-                            currentHourUtc)));
-        } else {
-            filters.add(SignalFilter.fail("PEAK_HOURS",
-                    String.format("-5pts | Dead hours (UTC %d) — low liquidity ❌",
-                            currentHourUtc)));
-        }
 
         // S9: Candle Pattern Recognition
         List<Candle> recentCandles = snapshot.getRecentCandles();
@@ -367,27 +424,24 @@ public class EmaSignalService implements SignalService {
                     "+0pts | No EMA data"));
         }
 
-        // S13: Pullback Entry Quality
-        BigDecimal emaFastPb = snapshot.getEmaFast();
-        BigDecimal pricePb   = snapshot.getCurrentPrice();
-
-        if (emaFastPb != null && pricePb != null
-                && emaFastPb.compareTo(BigDecimal.ZERO) > 0) {
-
-            BigDecimal distFromEma9 = pricePb.subtract(emaFastPb)
+        // S13: CATEGORY_ENTRY — Pullback entry quality
+        boolean entryGreen = false;
+        if (snapshot.getEmaFast() != null) {
+            BigDecimal distFromEma9 = snapshot.getCurrentPrice()
+                    .subtract(snapshot.getEmaFast())
                     .abs()
-                    .divide(emaFastPb, 6, RoundingMode.HALF_UP)
+                    .divide(snapshot.getEmaFast(), 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
 
             if (distFromEma9.compareTo(new BigDecimal("0.3")) <= 0) {
-                // ✅ Harga sangat dekat EMA9 = ideal pullback entry!
                 score += 15;
+                entryGreen = true;
                 filters.add(SignalFilter.pass("PULLBACK_ENTRY",
                         String.format("+15pts | Price near EMA9 (%.2f%% away) — ideal pullback ✅",
                                 distFromEma9.doubleValue())));
             } else if (distFromEma9.compareTo(new BigDecimal("0.8")) <= 0) {
-                // ✅ Masih acceptable
                 score += 5;
+                entryGreen = true;
                 filters.add(SignalFilter.pass("PULLBACK_ENTRY",
                         String.format("+5pts | Price close to EMA9 (%.2f%% away) — ok",
                                 distFromEma9.doubleValue())));
@@ -404,18 +458,17 @@ public class EmaSignalService implements SignalService {
                         "Price too extended from EMA9, wait for pullback", filters);
             }
         } else {
-            filters.add(SignalFilter.pass("PULLBACK_ENTRY",
-                    "+0pts | No EMA9 data"));
+            filters.add(SignalFilter.pass("PULLBACK_ENTRY", "+0pts | No EMA9 data"));
         }
+        if (entryGreen) confluenceGreen++;
 
         // S14: 4H Timeframe Confirmation
-// Macro trend harus bullish sebelum entry EMA
-// Mencegah beli di downtrend besar
+        boolean macroGreen = false;
         String trend4H = snapshot.getTrend4H();
-
         if (trend4H != null) {
             if ("BULLISH".equals(trend4H)) {
                 score += 20;
+                macroGreen = true;
                 filters.add(SignalFilter.pass("MTA_4H",
                         String.format("+20pts | 4H BULLISH (above EMA50 $%.4f) ✅",
                                 snapshot.getEma50_4H() != null
@@ -423,14 +476,38 @@ public class EmaSignalService implements SignalService {
             } else {
                 score -= 20;
                 filters.add(SignalFilter.fail("MTA_4H",
-                        String.format("-20pts | 4H BEARISH (below EMA50 $%.4f) ❌ — avoid buying in downtrend",
+                        String.format("-20pts | 4H BEARISH (below EMA50 $%.4f) ❌",
                                 snapshot.getEma50_4H() != null
                                         ? snapshot.getEma50_4H().doubleValue() : 0)));
             }
         } else {
-            // 4H data tidak tersedia → skip filter, tidak penalty
-            filters.add(SignalFilter.pass("MTA_4H",
-                    "+0pts | 4H data not available"));
+            // 4H data tidak tersedia → tidak penalty, tidak bonus, tidak green
+            filters.add(SignalFilter.pass("MTA_4H", "+0pts | 4H data not available"));
+        }
+        if (macroGreen) confluenceGreen++;
+
+        // S15: MARKET STRUCTURE scoring
+        switch (structureResult) {
+            case BREAK_OF_STRUCTURE -> {
+                score += 20;
+                confluenceGreen++; // structure category green
+                filters.add(SignalFilter.pass("STRUCTURE_SCORE",
+                        "+20pts | Break of Structure — momentum surge ✅"));
+            }
+            case BULLISH -> {
+                score += 15;
+                confluenceGreen++; // structure category green
+                filters.add(SignalFilter.pass("STRUCTURE_SCORE",
+                        "+15pts | Bullish structure (HH+HL) confirmed ✅"));
+            }
+            case NEUTRAL -> {
+                // Tidak ada bonus tidak ada penalty
+                filters.add(SignalFilter.pass("STRUCTURE_SCORE",
+                        "+0pts | Structure neutral — no bonus"));
+                // Tidak increment confluenceGreen — neutral bukan green
+            }
+            default -> {
+            }
         }
 
         // ═══════════════════════════════════════
@@ -440,15 +517,29 @@ public class EmaSignalService implements SignalService {
         score = Math.min(score, 100);
         log.info("📊 [EMA] Score: {}/100 | Threshold: {}", score, buyScoreThreshold);
 
-        if (score < buyScoreThreshold) {
+        int effectiveBuyThreshold      = isPreLondon ? buyScoreThreshold + 10      : buyScoreThreshold;
+        int effectiveStrongBuyThreshold = isPreLondon ? strongBuyScoreThreshold + 10 : strongBuyScoreThreshold;
+
+        if (score < effectiveBuyThreshold) {
             return Signal.hold(StrategyType.EMA_CROSSOVER,
-                    String.format("Score %d < %d (need %d more points)",
-                            score, buyScoreThreshold, buyScoreThreshold - score),
+                    String.format("Score %d < %d%s (need %d more points)",
+                            score, effectiveBuyThreshold,
+                            isPreLondon ? " [Pre-London elevated]" : "",
+                            effectiveBuyThreshold - score),
                     filters);
         }
 
+        // Confluence gate — minimum kategori independen harus green
+        if (confluenceGreen < minConfluenceCategories) {
+            return Signal.hold(StrategyType.EMA_CROSSOVER,
+                    String.format("Confluence insufficient: %d/%d categories green (need %d) ❌",
+                            confluenceGreen, 5, minConfluenceCategories),
+                    filters);
+        }
+        log.info("✅ [EMA] Confluence passed: {}/{} categories green", confluenceGreen, 5);
+
         // BUY — strong buy = 100% size, normal = 75% size
-        double posMultiplier = score >= strongBuyScoreThreshold ? 1.0 : 0.75;
+        double posMultiplier = score >= effectiveStrongBuyThreshold ? 1.0 : 0.75;
         return buildBuySignal(snapshot, filters, score, posMultiplier);
     }
 

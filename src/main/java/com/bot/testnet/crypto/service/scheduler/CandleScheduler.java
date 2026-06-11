@@ -220,7 +220,8 @@ public class CandleScheduler {
             telegramService.sendMessage(
                     "☀️ Morning Health Check",
                     String.format(
-                            "Status: <b>%s</b>\n\n" +
+                            "Status: <b>%s</b>\n" +
+                                    "💰 Balance: <b>$%.2f</b>\n\n" +
                                     "Yesterday (Live):\n" +
                                     "   Trades: %d\n" +
                                     "   P&L: <b>$%.4f</b>\n\n" +
@@ -274,6 +275,8 @@ public class CandleScheduler {
             // ✅ Set recentCandles + 4H DULU sebelum kirim ke service
             List<Candle> recentCandles = candleCache.getLastNClosedCandles(3);
             snapshot.setRecentCandles(recentCandles);
+            List<Candle> allCandles = candleCache.getLastNClosedCandles(50);
+            snapshot.setAllCandles(allCandles);
 
             if (!tradingHoursService.isWithinTradingHours()) {
                 log.info("🕐 Outside trading hours — skip 4H fetch and signal evaluation");

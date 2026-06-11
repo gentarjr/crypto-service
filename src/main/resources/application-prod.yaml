@@ -41,6 +41,12 @@ exchange:
 #  TRADING CONFIG
 # ═══════════════════════════════════════════════════════════
 trading:
+
+  market-structure:
+    pivot-left: 3
+    pivot-right: 3
+    lookback-candles: 50
+
   paper:
     enabled: false
   enabled: true
@@ -89,6 +95,7 @@ trading:
       pullback-enabled: true
       pullback-tolerance-percent: 0.3  # max 0.3% dari EMA9
       pullback-max-candles: 3
+      min-confluence-categories: 3
     bb:
       buy-score-threshold: 60
       strong-buy-score-threshold: 80
@@ -98,6 +105,7 @@ trading:
       percent-b-min: -0.1
       sl-atr-multiplier: 1.5
       tp-atr-multiplier: 1.5
+      min-confluence-categories: 3
 
   risk:
     timeout-hours: 2              # default timeout
