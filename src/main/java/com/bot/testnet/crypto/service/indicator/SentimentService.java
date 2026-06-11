@@ -225,7 +225,7 @@ public class SentimentService {
         }
 
         if (cachedLC != null &&
-                ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
+                Instant.now().isBefore(lastFetchLC.plusSeconds(cacheMinutes * 60))) {
             return;
         }
         isFetching = true;
@@ -273,7 +273,7 @@ public class SentimentService {
 
     private void refreshFearAndGreed() {
         // Update FNG tiap 6 jam (update harian, tidak perlu sering)
-        if (ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant().isBefore(lastFetchFNG.plusSeconds(6 * 3600))) return;
+        if (Instant.now().isBefore(lastFetchFNG.plusSeconds(6 * 3600))) return;
         try {
             FearGreedResponse resp = restTemplate.getForObject(
                     "https://api.alternative.me/fng/?limit=1",
