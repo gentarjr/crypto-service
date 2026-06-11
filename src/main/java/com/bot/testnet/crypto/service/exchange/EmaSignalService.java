@@ -152,7 +152,6 @@ public class EmaSignalService implements SignalService {
         }
 
         // M6: MARKET STRUCTURE — hard block kalau bearish structure terkonfirmasi
-        List<Candle> structureCandles = snapshot.getRecentCandles();
         MarketStructureService.StructureResult structureResult = MarketStructureService.StructureResult.NEUTRAL;
 
         List<Candle> allCachedCandles = snapshot.getAllCandles();

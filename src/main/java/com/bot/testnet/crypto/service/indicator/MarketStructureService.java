@@ -191,90 +191,82 @@ public class MarketStructureService {
      * 3. Tentukan hasil berdasarkan pola
      */
     private StructureResult evaluateStructure(List<SwingPoint> swings, List<Candle> window) {
-        // Ambil swing terakhir (paling recent) untuk analisis
-        // Minimal butuh 3 swing untuk pattern
         int size = swings.size();
-        SwingPoint s1 = swings.get(size - 3); // oldest dari 3 terakhir
+        SwingPoint s1 = swings.get(size - 3);
         SwingPoint s2 = swings.get(size - 2);
-        SwingPoint s3 = swings.get(size - 1); // most recent
+        SwingPoint s3 = swings.get(size - 1);
 
         log.debug("📐 Analyzing swings: {} → {} → {}", s1, s2, s3);
 
-        // ── Check Break of Structure ──────────────────
-        // BOS: ada swing low (HL) terbentuk, lalu harga break di atas swing high sebelumnya
-        // Pattern: SH → HL → harga sekarang > SH
+        BigDecimal currentPrice = window.get(window.size() - 1).getClose();
+
+        // Pattern: SL → SH → SL
         if (!s1.isHigh && s2.isHigh && !s3.isHigh) {
-            // s1=SL, s2=SH, s3=SL(HL) → cek apakah current price > s2 (swing high)
-            BigDecimal currentPrice = window.get(window.size() - 1).getClose();
-            if (currentPrice.compareTo(s2.price) > 0) {
-                log.info("📐 MarketStructure: BREAK_OF_STRUCTURE detected! " +
-                        "Price ${} broke above SH ${}", currentPrice, s2.price);
+            boolean isHL = s3.price.compareTo(s1.price) > 0;
+            boolean isLL = s3.price.compareTo(s1.price) < 0;
+
+            // BOS: HL terbentuk DAN harga sudah break di atas swing high
+            if (isHL && currentPrice.compareTo(s2.price) > 0) {
+                log.info("📐 BREAK_OF_STRUCTURE — HL confirmed + price broke SH ${}",
+                        s2.price);
                 return StructureResult.BREAK_OF_STRUCTURE;
             }
-        }
 
-        // ── Check 3-swing patterns ────────────────────
-
-        // Butuh setidaknya 2 swing high dan 1 low (atau 2 low dan 1 high)
-        // untuk determine HH/HL atau LH/LL
-
-        // Pattern BULLISH: SL → SH → HL (Higher Low setelah Higher High)
-        // s1 = swing low, s2 = swing high, s3 = swing low (HL = lebih tinggi dari s1)
-        if (!s1.isHigh && s2.isHigh && !s3.isHigh) {
-            boolean isHL = s3.price.compareTo(s1.price) > 0; // s3 low > s1 low = Higher Low
+            // BULLISH: HL terbentuk tapi belum break SH
             if (isHL) {
-                log.info("📐 MarketStructure: BULLISH (HL confirmed) — SL${} → SH${} → HL${}",
+                log.info("📐 BULLISH (HL confirmed) SL${} → SH${} → HL${}",
                         s1.price, s2.price, s3.price);
                 return StructureResult.BULLISH;
             }
-            // s3 low < s1 low = Lower Low setelah swing high = CHoCH
-            log.info("📐 MarketStructure: CHANGE_OF_CHARACTER — LL formed after upswing. SL${} → SH${} → LL${}",
-                    s1.price, s2.price, s3.price);
-            return StructureResult.CHANGE_OF_CHARACTER;
-        }
 
-        // Pattern BULLISH: SH → HL → HH (Higher High setelah Higher Low)
-        // s1 = swing high, s2 = swing low (HL), s3 = swing high (HH = lebih tinggi dari s1)
-        if (s1.isHigh && !s2.isHigh && s3.isHigh) {
-            boolean isHH = s3.price.compareTo(s1.price) > 0; // s3 high > s1 high = Higher High
-            boolean isHL = s2.price.compareTo(BigDecimal.ZERO) > 0; // HL sudah terbentuk (s2 ada)
-            if (isHH && isHL) {
-                log.info("📐 MarketStructure: BULLISH (HH confirmed) — SH${} → HL${} → HH${}",
-                        s1.price, s2.price, s3.price);
-                return StructureResult.BULLISH;
-            }
-            // s3 < s1 = Lower High terbentuk = awal bearish structure
-            if (!isHH) {
-                log.info("📐 MarketStructure: BEARISH forming (LH) — SH${} → SL${} → LH${}",
+            // CHoCH: LL terbentuk setelah swing high
+            if (isLL) {
+                log.info("📐 CHANGE_OF_CHARACTER — LL after SH. SL${} → SH${} → LL${}",
                         s1.price, s2.price, s3.price);
                 return StructureResult.CHANGE_OF_CHARACTER;
             }
         }
 
-        // Pattern BEARISH: SH → LH → LL
-        // s1 = swing high, s2 = swing high (LH = lebih rendah dari s1), s3 = swing low
-        if (s1.isHigh && s2.isHigh && !s3.isHigh) {
-            boolean isLH = s2.price.compareTo(s1.price) < 0; // s2 < s1 = Lower High
+        // Pattern: SH → SL → SH
+        if (s1.isHigh && !s2.isHigh && s3.isHigh) {
+            boolean isHH = s3.price.compareTo(s1.price) > 0;
+            boolean isLH = s3.price.compareTo(s1.price) < 0;
+
+            if (isHH) {
+                log.info("📐 BULLISH (HH confirmed) SH${} → HL${} → HH${}",
+                        s1.price, s2.price, s3.price);
+                return StructureResult.BULLISH;
+            }
+
             if (isLH) {
-                log.info("📐 MarketStructure: BEARISH — LH${} → LL${}",
+                log.info("📐 CHANGE_OF_CHARACTER — LH forming. SH${} → SL${} → LH${}",
+                        s1.price, s2.price, s3.price);
+                return StructureResult.CHANGE_OF_CHARACTER;
+            }
+        }
+
+        // Pattern: SH → SH → SL (dua swing high berurutan)
+        if (s1.isHigh && s2.isHigh && !s3.isHigh) {
+            boolean isLH = s2.price.compareTo(s1.price) < 0;
+            if (isLH) {
+                log.info("📐 BEARISH — LH${} → LL${}",
                         s2.price, s3.price);
                 return StructureResult.BEARISH;
             }
         }
 
-        // Pattern BEARISH: SL → LH → LL
-        // s1 = swing low, s2 = swing high (LH), s3 = swing low (LL = lebih rendah dari s1)
-        if (!s1.isHigh && s2.isHigh && !s3.isHigh) {
-            boolean isLL = s3.price.compareTo(s1.price) < 0; // s3 low < s1 low = Lower Low
-            boolean isLH = s2.price.compareTo(BigDecimal.ZERO) > 0;
+        // Pattern: SL → SH → SL (sama dengan pattern pertama tapi sudah di-handle)
+        // Pattern: SL → SL → SH — dua swing low berurutan
+        if (!s1.isHigh && !s2.isHigh && s3.isHigh) {
+            boolean isLL = s2.price.compareTo(s1.price) < 0;
             if (isLL) {
-                log.info("📐 MarketStructure: BEARISH (LL confirmed) — SL${} → LH${} → LL${}",
+                log.info("📐 BEARISH (LL confirmed) SL${} → LL${} → LH${}",
                         s1.price, s2.price, s3.price);
                 return StructureResult.BEARISH;
             }
         }
 
-        log.debug("📐 MarketStructure: NEUTRAL — no clear pattern from swings");
+        log.debug("📐 NEUTRAL — no clear pattern");
         return StructureResult.NEUTRAL;
     }
 }
