@@ -99,7 +99,7 @@ public class OrderExecutorService {
     @Value("${trading.risk.timeout-profit-threshold:0.5}")
     private double timeoutProfitThreshold;
 
-    @Value("${trading.risk.risk-per-trade-percent:0.5}")
+    @Value("${trading.risk.risk-per-trade-percent:1.0}")
     private double riskPerTradePercent;
 
     @Value("${trading.risk.max-position-percent:75.0}")
@@ -769,7 +769,7 @@ public class OrderExecutorService {
             return;
         }
 
-        if (lastSnapshot != null && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
+        if (lastSnapshot != null && pos.getStrategy() == StrategyType.EMA_CROSSOVER) {
             boolean trailingUpdated = trailingStopHelper.update(
                     pos, realtimePrice, lastSnapshot.getAtr(), "LIVE");
 
@@ -1307,7 +1307,7 @@ public class OrderExecutorService {
     }
 
     private void checkAndResetDaily() {
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Jakarta"));
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         if (lastResetDate == null || !lastResetDate.equals(today)) {
             log.info("📅 [LIVE] Daily stats reset for {}", today);
 
