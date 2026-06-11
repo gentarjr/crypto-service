@@ -698,34 +698,34 @@ public class OrderExecutorService {
         }
 
         // Update trailing SL (EMA strategy only)
-        if (lastSnapshot != null && openPosition.getStrategy() == StrategyType.EMA_CROSSOVER) {
+        if (lastSnapshot != null && pos.getStrategy() == StrategyType.EMA_CROSSOVER) {
             boolean trailingUpdated = trailingStopHelper.update(
-                    openPosition, currentPrice, lastSnapshot.getAtr(), "LIVE");
+                    pos, currentPrice, lastSnapshot.getAtr(), "LIVE");
 
-            if (trailingUpdated && openPosition.getOcoOrderListId() != null) {
-                BigDecimal slChange = openPosition.getStopLoss()
-                        .subtract(openPosition.getLastOcoSL() != null
-                                ? openPosition.getLastOcoSL()
-                                : openPosition.getInitialStopLoss())
+            if (trailingUpdated && pos.getOcoOrderListId() != null) {
+                BigDecimal slChange = pos.getStopLoss()
+                        .subtract(pos.getLastOcoSL() != null
+                                ? pos.getLastOcoSL()
+                                : pos.getInitialStopLoss())
                         .abs();
                 if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
-                    updateOcoAfterTrailing(openPosition);
-                    openPosition.setLastOcoSL(openPosition.getStopLoss());
+                    updateOcoAfterTrailing(pos);
+                    pos.setLastOcoSL(pos.getStopLoss());
                 }
             }
         }
 
         // Check TP (BB strategy)
-        if (openPosition.isHitTakeProfit(currentPrice)) {
-            log.info("🎯 [LIVE] TP HIT: {} >= {}", currentPrice, openPosition.getTakeProfit());
+        if (pos.isHitTakeProfit(currentPrice)) {
+            log.info("🎯 [LIVE] TP HIT: {} >= {}", currentPrice, pos.getTakeProfit());
             closeLivePosition(currentPrice, "TAKE_PROFIT");
             return;
         }
 
         // Check SL
-        if (openPosition.isHitStopLoss(currentPrice)) {
-            String reason = openPosition.isTrailingActive() ? "TRAILING_STOP" : "STOP_LOSS";
-            log.warn("🛑 [LIVE] {} HIT: {} <= {}", reason, currentPrice, openPosition.getStopLoss());
+        if (pos.isHitStopLoss(currentPrice)) {
+            String reason = pos.isTrailingActive() ? "TRAILING_STOP" : "STOP_LOSS";
+            log.warn("🛑 [LIVE] {} HIT: {} <= {}", reason, currentPrice, pos.getStopLoss());
             closeLivePosition(currentPrice, reason);
         }
     }
