@@ -103,7 +103,7 @@ trading:
       rsi-oversold-threshold: 30
       volume-min-multiplier: 0.7
       percent-b-min: -0.1
-      sl-atr-multiplier: 1.5
+      sl-atr-multiplier: 0.5
       tp-atr-multiplier: 1.5
       min-confluence-categories: 3
 

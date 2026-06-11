@@ -14,6 +14,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
@@ -257,7 +258,7 @@ public class SentimentService {
                         d.getTypesInteractions());
 
                 cachedLC    = newData;
-                lastFetchLC = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
+                lastFetchLC = ZonedDateTime.now(ZoneOffset.UTC).toInstant();
 
                 double spikeChg = getSocialVolumeChangePercent();
                 log.info("📊 [LUNARCRUSH] BNB: sentiment={}, trend={}, interactions={}, spike={}%",
@@ -281,7 +282,7 @@ public class SentimentService {
             if (resp != null && resp.getData() != null && !resp.getData().isEmpty()) {
                 cachedFNG      = Integer.parseInt(resp.getData().get(0).getValue());
                 cachedFNGLabel = resp.getData().get(0).getValueClassification();
-                lastFetchFNG   = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
+                lastFetchFNG   = ZonedDateTime.now(ZoneOffset.UTC).toInstant();
                 log.info("📊 [FEAR&GREED] Score: {} ({})", cachedFNG, cachedFNGLabel);
             }
         } catch (Exception e) {
