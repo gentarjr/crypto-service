@@ -659,37 +659,40 @@ public class OrderExecutorService {
 
         checkPartialTakeProfit(currentPrice);
 
-        if (openPosition.getOpenTime() != null) {
+        LivePosition pos = openPosition;
+        if (pos == null) return;
+
+        if (pos.getOpenTime() != null) {
             long minutesOpen = Duration.between(
-                    openPosition.getOpenTime(),
+                    pos.getOpenTime(),
                     Instant.now()).toMinutes();
 
             if (minutesOpen > (timeoutHours * 60)) {
                 BigDecimal unrealized = currentPrice
-                        .subtract(openPosition.getEntryPrice())
-                        .multiply(openPosition.getQuantity());
-                BigDecimal profitPct = openPosition.getPositionValue()
+                        .subtract(pos.getEntryPrice())
+                        .multiply(pos.getQuantity());
+                BigDecimal profitPct = pos.getPositionValue()
                         .compareTo(BigDecimal.ZERO) > 0
-                        ? unrealized.divide(openPosition.getPositionValue(),
+                        ? unrealized.divide(pos.getPositionValue(),
                                 6, RoundingMode.HALF_UP)
                         .multiply(BigDecimal.valueOf(100))
                         : BigDecimal.ZERO;
 
                 if (profitPct.doubleValue() >= timeoutProfitThreshold) {
                     log.info("⏰ [LIVE] Position #{} timeout reached BUT profit {}% >= {}% threshold — skip timeout",
-                            openPosition.getId(),
+                            pos.getId(),
                             String.format("%.2f", profitPct.doubleValue()),
                             timeoutProfitThreshold);
-                } else if (!openPosition.isTrailingActive()) {
+                } else if (!pos.isTrailingActive()) {
                     log.warn("⏰ [LIVE] Position #{} stagnant {}m, profit {}% < {}% — force close",
-                            openPosition.getId(), minutesOpen,
+                            pos.getId(), minutesOpen,
                             String.format("%.2f", profitPct.doubleValue()),
                             timeoutProfitThreshold);
                     closeLivePosition(currentPrice, "TIMEOUT_NO_PROGRESS");
                     return;
                 } else {
                     log.info("⏰ [LIVE] Position #{} timeout reached but trailing active — skip timeout",
-                            openPosition.getId());
+                            pos.getId());
                 }
             }
         }
