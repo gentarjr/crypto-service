@@ -130,7 +130,7 @@ trading:
     topic: bnb                                    # ← topik BNB
     score-weight: 15
     cache-minutes: 180                    # ← update tiap jam
-    lunarcrush-enabled: true  # ← disable hanya LunarCrush
+    lunarcrush-enabled: false  # ← disable hanya LunarCrush
 
   websocket:
     base-url: wss://stream.binance.com/ws  # ✅ aktif di VPS
