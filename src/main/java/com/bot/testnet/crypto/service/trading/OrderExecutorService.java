@@ -738,55 +738,69 @@ public class OrderExecutorService {
     public void monitorPositionRealtime(BigDecimal realtimePrice) {
         if (!liveEnabled || openPosition == null) return;
 
+        boolean shouldCheckPartialTp = false;
+        String closeReason = null;
+        LivePosition posSnapshot = null;
+        boolean needOcoUpdate = false;
+
         positionLock.lock();
         try {
             if (openPosition == null) return;
-            openPosition.updateHighestPrice(realtimePrice);
+            LivePosition pos = openPosition;
+
+            pos.updateHighestPrice(realtimePrice);
+
+            log.info("📡 [LIVE] RT monitor: price=${} SL=${} TP={}",
+                    realtimePrice,
+                    pos.getStopLoss(),
+                    pos.getTakeProfit() != null ? "$" + pos.getTakeProfit() : "TRAIL");
+
+            // Cek SL/TP DI DALAM lock — tidak ada window race
+            if (pos.isHitStopLoss(realtimePrice)) {
+                closeReason = pos.isTrailingActive() ? "TRAILING_STOP" : "STOP_LOSS";
+                log.warn("🛑 [LIVE] {} HIT (realtime): ${} <= ${}",
+                        closeReason, realtimePrice, pos.getStopLoss());
+            } else if (pos.isHitTakeProfit(realtimePrice)) {
+                closeReason = "TAKE_PROFIT";
+                log.info("🎯 [LIVE] TP HIT (realtime): ${} >= ${}",
+                        realtimePrice, pos.getTakeProfit());
+            } else {
+                // Hanya update trailing kalau TIDAK ada SL/TP hit
+                if (lastSnapshot != null && pos.getStrategy() == StrategyType.EMA_CROSSOVER) {
+                    boolean trailingUpdated = trailingStopHelper.update(
+                            pos, realtimePrice, lastSnapshot.getAtr(), "LIVE");
+
+                    if (trailingUpdated && pos.getOcoOrderListId() != null) {
+                        BigDecimal slChange = pos.getStopLoss()
+                                .subtract(pos.getLastOcoSL() != null
+                                        ? pos.getLastOcoSL()
+                                        : pos.getInitialStopLoss())
+                                .abs();
+                        if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
+                            needOcoUpdate = true;
+                            pos.setLastOcoSL(pos.getStopLoss());
+                        }
+                    }
+                }
+                shouldCheckPartialTp = true;
+                posSnapshot = pos;
+            }
         } finally {
             positionLock.unlock();
         }
 
-        checkPartialTakeProfit(realtimePrice);
-
-        // Guard setelah lock dilepas
-        LivePosition pos = openPosition;
-        if (pos == null) return;
-
-        log.info("📡 [LIVE] RT monitor: price=${} SL=${} TP={}",
-                realtimePrice,
-                pos.getStopLoss(),
-                pos.getTakeProfit() != null ? "$" + pos.getTakeProfit() : "TRAIL");
-
-        if (pos.isHitStopLoss(realtimePrice)) {
-            String reason = pos.isTrailingActive() ? "TRAILING_STOP" : "STOP_LOSS";
-            log.warn("🛑 [LIVE] {} HIT (realtime): ${} <= ${}",
-                    reason, realtimePrice, pos.getStopLoss());
-            closeLivePosition(realtimePrice, reason);
+        // Operasi di luar lock — aman karena keputusan sudah final di dalam lock
+        if (closeReason != null) {
+            closeLivePosition(realtimePrice, closeReason);
             return;
         }
 
-        if (pos.isHitTakeProfit(realtimePrice)) {
-            log.info("🎯 [LIVE] TP HIT (realtime): ${} >= ${}",
-                    realtimePrice, pos.getTakeProfit());
-            closeLivePosition(realtimePrice, "TAKE_PROFIT");
-            return;
+        if (needOcoUpdate && posSnapshot != null) {
+            updateOcoAfterTrailing(posSnapshot);
         }
 
-        if (lastSnapshot != null && pos.getStrategy() == StrategyType.EMA_CROSSOVER) {
-            boolean trailingUpdated = trailingStopHelper.update(
-                    pos, realtimePrice, lastSnapshot.getAtr(), "LIVE");
-
-            if (trailingUpdated && pos.getOcoOrderListId() != null) {
-                BigDecimal slChange = pos.getStopLoss()
-                        .subtract(pos.getLastOcoSL() != null
-                                ? pos.getLastOcoSL()
-                                : pos.getInitialStopLoss())
-                        .abs();
-                if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
-                    updateOcoAfterTrailing(pos);
-                    pos.setLastOcoSL(pos.getStopLoss());
-                }
-            }
+        if (shouldCheckPartialTp) {
+            checkPartialTakeProfit(realtimePrice);
         }
     }
 
