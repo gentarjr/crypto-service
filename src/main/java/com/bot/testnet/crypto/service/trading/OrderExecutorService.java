@@ -544,7 +544,7 @@ public class OrderExecutorService {
                 return; // ← jangan buka posisi
             }
 
-            BigDecimal originalEntry = signal.getPrice();
+            BigDecimal originalEntry = currentPrice;
             BigDecimal originalSL    = signal.getStopLoss();
             BigDecimal adjustedSL    = originalSL;
             BigDecimal adjustedTP    = signal.getTakeProfit();
