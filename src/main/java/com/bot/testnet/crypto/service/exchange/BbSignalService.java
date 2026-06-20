@@ -465,7 +465,14 @@ public class BbSignalService implements SignalService {
                 .divide(price, 6, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));
 
-        BigDecimal tpDistance = takeProfit.subtract(price).abs();
+        BigDecimal tpDistance = takeProfit.subtract(price);
+        if (tpDistance.compareTo(BigDecimal.ZERO) <= 0) {
+            filters.add(SignalFilter.fail("TP_INVALID",
+                    String.format("takeProfit $%.2f ≤ price $%.2f — invalid long setup",
+                            takeProfit.doubleValue(), price.doubleValue())));
+            return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                    "TP below entry — skip", filters);
+        }
         BigDecimal tpDistancePct = tpDistance
                 .divide(price, 6, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));
