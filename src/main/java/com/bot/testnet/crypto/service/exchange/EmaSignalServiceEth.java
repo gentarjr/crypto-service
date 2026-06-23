@@ -64,7 +64,7 @@ public class EmaSignalServiceEth implements SignalService {
     @Value("${trading.risk-eth.max-position-percent:75.0}")
     private double maxPositionPercent;
 
-    @Value("${trading.mta.enabled:true}")
+    @Value("${trading.mta-eth.enabled:true}")
     private boolean mtaEnabled;
 
     @Value("${trading.strategy.ema.min-confluence-categories:3}")
