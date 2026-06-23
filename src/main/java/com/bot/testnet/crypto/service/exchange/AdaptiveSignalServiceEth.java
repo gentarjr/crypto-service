@@ -15,8 +15,8 @@ import org.springframework.stereotype.Service;
 @Log4j2
 public class AdaptiveSignalServiceEth {
 
-    private final EmaSignalService emaSignalService;
-    private final BbSignalService bbSignalService;
+    private final EmaSignalServiceEth emaSignalServiceEth;
+    private final BbSignalServiceEth bbSignalServiceEth;
 
     private SignalAction lastSignalAction = SignalAction.HOLD;
     private StrategyType lastStrategyType = null;
@@ -29,11 +29,11 @@ public class AdaptiveSignalServiceEth {
         Signal signal = switch (regime) {
             case "TRENDING", "STRONG_TRENDING" -> {
                 log.info("📈 [ETH] Trending market → EMA Crossover strategy");
-                yield emaSignalService.evaluate(snapshot);
+                yield emaSignalServiceEth.evaluate(snapshot);
             }
             case "RANGING" -> {
                 log.info("〰️ [ETH] Ranging market → BB Mean Reversion strategy");
-                yield bbSignalService.evaluate(snapshot);
+                yield bbSignalServiceEth.evaluate(snapshot);
             }
             default -> {
                 log.info("⏸️ [ETH] Transition zone (ADX 20-25) → NO TRADE");

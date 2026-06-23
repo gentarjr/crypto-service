@@ -49,19 +49,19 @@ public class EmaSignalServiceEth implements SignalService {
     @Value("${trading.strategy.ema.price-extension-max:1.015}")
     private double priceExtensionMax;
 
-    @Value("${trading.risk.sl-atr-multiplier:1.5}")
+    @Value("${trading.risk-eth.sl-atr-multiplier:1.5}")
     private double slAtrMultiplier;
 
-    @Value("${trading.risk.tp-atr-multiplier:2.0}")
+    @Value("${trading.risk-eth.tp-atr-multiplier:2.0}")
     private double tpAtrMultiplier;
 
-    @Value("${trading.risk.modal:300}")
+    @Value("${trading.risk-eth.modal:300}")
     private double modal;
 
-    @Value("${trading.risk.risk-per-trade-percent:1.0}")
+    @Value("${trading.risk-eth.risk-per-trade-percent:1.0}")
     private double riskPerTradePercent;
 
-    @Value("${trading.risk.max-position-percent:90.0}")
+    @Value("${trading.risk-eth.max-position-percent:75.0}")
     private double maxPositionPercent;
 
     @Value("${trading.mta.enabled:true}")

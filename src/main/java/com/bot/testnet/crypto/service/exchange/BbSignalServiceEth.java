@@ -48,13 +48,13 @@ public class BbSignalServiceEth implements SignalService {
     @Value("${trading.strategy.bb.strong-buy-score-threshold:80}")
     private int strongBuyScoreThreshold;
 
-    @Value("${trading.risk.modal:300}")
+    @Value("${trading.risk-eth.modal:300}")
     private double modal;
 
-    @Value("${trading.risk.risk-per-trade-percent:1.0}")
+    @Value("${trading.risk-eth.risk-per-trade-percent:1.0}")
     private double riskPerTradePercent;
 
-    @Value("${trading.risk.max-position-percent:90.0}")
+    @Value("${trading.risk-eth.max-position-percent:75.0}")
     private double maxPositionPercent;
 
     @Value("${trading.strategy.bb.tp-atr-multiplier:1.0}")
