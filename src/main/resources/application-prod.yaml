@@ -53,6 +53,42 @@ trading:
   pair:
     base: BNB
     quote: USDT
+  pair-eth:
+    enabled: false
+    base: ETH
+    quote: USDC
+  live-eth:
+    enabled: false
+    risk-eth:
+      modal: 300
+      risk-per-trade-percent: 1.0
+      max-daily-loss-percent: 5.0
+      max-consecutive-losses: 10
+      cooldown-minutes: 60
+      bb-cooldown-minutes: 30
+      sl-atr-multiplier: 1.5
+      tp-atr-multiplier: 2.0
+      trailing-atr-multiplier: 1.5
+      max-position-percent: 75.0
+      max-slippage-percent: 0.8
+      timeout-hours: 2
+    websocket-eth:
+      base-url: wss://stream.binance.com/ws
+      reconnect-delay-seconds: 5
+      max-reconnect-attempts: 10
+      enabled: false
+  mta-eth:
+    enabled: true
+    ema-period: 50
+    cache-duration-minutes: 30
+  sentiment-eth:
+    enabled: false
+    lunarcrush-api-key: ${LUNARCRUSH_API_KEY}
+    topic: eth
+    score-weight: 15
+    cache-minutes: 180
+    lunarcrush-enabled: false
+
   oco:
     enabled: true
 

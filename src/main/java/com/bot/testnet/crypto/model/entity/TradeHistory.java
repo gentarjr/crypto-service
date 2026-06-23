@@ -21,6 +21,9 @@ public class TradeHistory {
     @Column(name = "id", length = 20)
     private String id;
 
+    @Column(name = "pair", length = 20)
+    private String pair;
+
     @Column(name = "strategy", length = 30)
     private String strategy;
 
