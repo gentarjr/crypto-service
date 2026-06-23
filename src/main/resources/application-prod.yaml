@@ -54,11 +54,11 @@ trading:
     base: BNB
     quote: USDT
   pair-eth:
-    enabled: false
+    enabled: true
     base: ETH
     quote: USDC
   live-eth:
-    enabled: false
+    enabled: true
   risk-eth:
     modal: 300
     risk-per-trade-percent: 1.0
@@ -78,7 +78,7 @@ trading:
     base-url: wss://stream.binance.com/ws
     reconnect-delay-seconds: 5
     max-reconnect-attempts: 10
-    enabled: false
+    enabled: true
   mta-eth:
     enabled: true
     ema-period: 50
