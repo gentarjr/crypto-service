@@ -223,6 +223,8 @@ logging:
     org.springframework: WARN
     org.hibernate: WARN
     org.java_websocket: WARN
+    com.bot.testnet.crypto.service.indicator: WARN
+    com.bot.testnet.crypto.service.exchange: WARN
   file:
     name: /opt/cryptobot/logs/crypto-bot.log  # ✅ path di VPS
   logback:
