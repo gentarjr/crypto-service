@@ -110,7 +110,7 @@ public class OrderExecutorService {
     // ═══════════════════════════════════════════════════
 
     private LocalDate lastResetDate;
-    private LivePosition openPosition;
+    private volatile LivePosition openPosition;
     private final List<LivePosition> closedPositions = new ArrayList<>();
     private final ReentrantLock positionLock = new ReentrantLock();
 
