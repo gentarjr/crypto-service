@@ -843,6 +843,19 @@ public class OrderExecutorService {
                     .multiply(BigDecimal.valueOf(partialTpRatio))
                     .setScale(3, RoundingMode.DOWN);
 
+            try {
+                BigDecimal actualBal = balanceService.getAvailableBnb();
+                if (actualBal != null && actualBal.compareTo(partialQty) < 0) {
+                    BigDecimal capped = actualBal.multiply(new BigDecimal("0.999"))
+                            .setScale(3, RoundingMode.DOWN);
+                    log.warn("⚠️ Partial TP qty {} > actual balance {} — capped to {}",
+                            partialQty, actualBal, capped);
+                    partialQty = capped;
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ Cannot verify balance for partial TP cap: {}", e.getMessage());
+            }
+
             if (partialQty.compareTo(new BigDecimal("0.001")) < 0) {
                 log.warn("⚠️ Partial TP qty too small: {} — skip", partialQty);
                 openPosition.setPartialTpExecuted(false); // reset flag
