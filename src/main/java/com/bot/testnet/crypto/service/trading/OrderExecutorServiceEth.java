@@ -1013,11 +1013,15 @@ public class OrderExecutorServiceEth {
                                     "Position #%s could not be closed!\n" +
                                             "Reason: %s\nStatus: %s\n\n" +
                                             "⚠️ Close manually on Binance!\n" +
+                                            "📋 Trade tetap dicatat pakai estimasi harga %s\n" +
+                                            "   (verifikasi harga fill ASLI di Binance!)\n" +
                                             "⏰ %s WIB",
                                     positionToClose.getId(),
                                     reason,
                                     sellResult.getStatus(),
+                                    exitPrice,
                                     formatTime()));
+                    updateCloseStats(positionToClose, exitPrice, reason + "_MANUAL");
                     // openPosition sudah null di atas → tidak loop ✅
                     return;
                 }
@@ -1033,10 +1037,17 @@ public class OrderExecutorServiceEth {
                                 "Position #%s error!\n" +
                                         "Error: %s\n\n" +
                                         "⚠️ Close manually on Binance!\n" +
+                                        "📋 Trade tetap dicatat pakai estimasi harga %s\n" +
+                                        "   (verifikasi harga fill ASLI di Binance!)\n" +
                                         "⏰ %s WIB",
                                 positionToClose.getId(),
                                 e.getMessage(),
+                                exitPrice,
                                 formatTime()));
+                // ✅ FIX: sama kayak branch SELL FAILED di atas — tetap catat
+                // ke TradeHistory pakai estimasi, jangan biarin trade hilang
+                // dari tracking + consecutiveLosses/dailyPnl gak ke-update.
+                updateCloseStats(positionToClose, exitPrice, reason + "_MANUAL");
                 // openPosition sudah null → tidak loop ✅
             }
 
