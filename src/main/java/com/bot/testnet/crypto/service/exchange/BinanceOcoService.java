@@ -51,8 +51,7 @@ public class BinanceOcoService {
 
         try {
             String symbol = (request.getBase() + request.getQuote()).toUpperCase();
-            BigDecimal qty     = request.getQuantity()
-                    .setScale(2, RoundingMode.DOWN);
+            BigDecimal qty     = request.getQuantity();
             BigDecimal tpPrice = request.getTakeProfitPrice()
                     .setScale(2, RoundingMode.HALF_UP);
             BigDecimal slPrice = request.getStopLossPrice()

@@ -288,7 +288,7 @@ public class OrderExecutorService {
             BigDecimal availableUsdt = balanceService.getAvailableCapital();
             if (availableUsdt.compareTo(new BigDecimal("10")) < 0) {
                 log.warn("⚠️ Insufficient USDT: ${}", availableUsdt);
-                telegramService.sendMessage(
+                sendTg(
                         "⚠️ [LIVE] Insufficient Balance",
                         String.format(
                                 "USDT tidak cukup untuk trading!\n\n" +
@@ -339,7 +339,7 @@ public class OrderExecutorService {
             if (availableUsdt.compareTo(positionSize) < 0) {
                 log.warn("⚠️ Insufficient balance. Need: ${} | Available: ${}",
                         positionSize, availableUsdt);
-                telegramService.sendMessage(
+                sendTg(
                         "⚠️ [LIVE] Insufficient Balance",
                         "Insufficient balance to open position.");
                 return;
@@ -351,7 +351,7 @@ public class OrderExecutorService {
 
             if (!isQuantitySufficient(quantity)) {
                 log.warn("⚠️ Quantity too small: {} BNB (min 0.01)", quantity);
-                telegramService.sendMessage("⚠️ [LIVE] Order Skipped",
+                sendTg("⚠️ [LIVE] Order Skipped",
                         "Quantity too small untuk trading. Increase position size.");
                 return;
             }
@@ -379,7 +379,7 @@ public class OrderExecutorService {
                     if (slippagePct.compareTo(maxSlippagePct) > 0) {
                         log.warn("⚠️ Slippage too high: signal=${} → real-time=${} ({}%)",
                                 signalPrice, realTimePrice, slippagePct);
-                        telegramService.sendMessage(
+                        sendTg(
                                 "⚠️ [LIVE] Order Skipped — High Slippage",
                                 String.format(
                                         "Signal price: $%.4f\n" +
@@ -451,7 +451,7 @@ public class OrderExecutorService {
             // 4. Verify order filled
             if (!"FILLED".equals(orderResult.getStatus())) {
                 log.error("❌ [LIVE] Order not filled: {}", orderResult.getStatus());
-                telegramService.sendMessage(
+                sendTg(
                         "❌ [LIVE] Order Failed",
                         "Status: " + orderResult.getStatus() +
                                 "\nError: " + orderResult.getErrorMessage());
@@ -509,7 +509,7 @@ public class OrderExecutorService {
             if (postFillSlippage.compareTo(BigDecimal.valueOf(maxSlippagePercent)) > 0) {
                 log.warn("🚨 Post-fill slippage {}% > {}% — closing immediately!",
                         postFillSlippage, maxSlippagePercent);
-                telegramService.sendMessage(
+                sendTg(
                         "⚠️ [LIVE] Order Closed — Post-fill Slippage Too High",
                         String.format(
                                 "Requested: $%.4f\n" +
@@ -535,7 +535,7 @@ public class OrderExecutorService {
                     log.info("✅ Post-fill sell executed: {} BNB", sellAmt);
                 } catch (Exception sellEx) {
                     log.error("❌ Post-fill sell failed: {}", sellEx.getMessage());
-                    telegramService.sendMessage(
+                    sendTg(
                             "🚨 CRITICAL — Close Manual!",
                             "Gagal close post-fill!\n" +
                                     "Close manual di Binance!\n" +
@@ -627,7 +627,7 @@ public class OrderExecutorService {
 
         } catch (Exception e) {
             log.error("❌ BUY error: {}", e.getMessage());
-            telegramService.sendMessage(
+            sendTg(
                     "❌ BUY Order GAGAL",
                     String.format(
                             "Gagal eksekusi BUY order!\n\n" +
@@ -888,7 +888,7 @@ public class OrderExecutorService {
                             partialQty, currentPrice,
                             partialNetProfit, remainingQty, newSL);
 
-                    telegramService.sendMessage(
+                    sendTg(
                             "🎯 [LIVE] Partial Take Profit!",
                             String.format(
                                     "Position #%s\n\n" +
@@ -955,7 +955,7 @@ public class OrderExecutorService {
             if (actualBnbBalance == null
                     || actualBnbBalance.compareTo(new BigDecimal("0.01")) < 0) {
                 log.info("✅ BNB = 0 — position already closed by OCO");
-                telegramService.sendMessage(
+                sendTg(
                         "✅ [LIVE] Position Closed by OCO",
                         String.format(
                                 "Position #%s closed by Binance OCO.\n" +
@@ -995,7 +995,7 @@ public class OrderExecutorService {
 
                 if (!"FILLED".equals(sellResult.getStatus())) {
                     log.error("❌ [LIVE] SELL failed: {}", sellResult.getStatus());
-                    telegramService.sendMessage(
+                    sendTg(
                             "🚨 [LIVE] SELL FAILED — MANUAL ACTION NEEDED!",
                             String.format(
                                     "Position #%s could not be closed!\n" +
@@ -1015,7 +1015,7 @@ public class OrderExecutorService {
 
             } catch (Exception e) {
                 log.error("❌ SELL error: {}", e.getMessage());
-                telegramService.sendMessage(
+                sendTg(
                         "🚨 [LIVE] SELL ERROR — MANUAL ACTION NEEDED!",
                         String.format(
                                 "Position #%s error!\n" +
@@ -1094,7 +1094,7 @@ public class OrderExecutorService {
 
         BigDecimal modalBd = balanceService.getTotalCapital();
 
-        telegramService.sendMessage(
+        sendTg(
                 "🛑 [LIVE] Trading HALTED",
                 String.format(
                         "Reason: %s\n" +
@@ -1135,12 +1135,16 @@ public class OrderExecutorService {
     // Private: Notifications
     // ═══════════════════════════════════════════════════
 
+    private void sendTg(String title, String body) {
+        telegramService.sendMessage("🟡 [BNB] " + title, body);
+    }
+
     private void sendLivePositionOpenedNotif(LivePosition position, String ocoStatus) {
         String strategy = position.getStrategy() == StrategyType.EMA_CROSSOVER
                 ? "EMA_CROSSOVER"
                 : "BB_MEAN_REVERSION";
 
-        telegramService.sendMessage(
+        sendTg(
                 "🟢 [LIVE] Position Opened",
                 String.format(
                         "🆔 #%s | %s\n\n" +
@@ -1275,7 +1279,7 @@ public class OrderExecutorService {
                 : BigDecimal.ZERO;
         String dailySign = dailyPct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "";
 
-        telegramService.sendMessage(
+        sendTg(
                 emoji + " [LIVE] " + position.getCloseReason(),
                 String.format(
                         "🆔 #%s | %s\n\n" +
@@ -1337,7 +1341,7 @@ public class OrderExecutorService {
             lastResetDate = today;
 
             if (wasHalted) {  // ✅ Cek state yang lama
-                telegramService.sendMessage(
+                sendTg(
                         "✅ [LIVE] Bot Resumed",
                         String.format(
                                 "New day — daily limits reset\n\n" +
@@ -1400,7 +1404,7 @@ public class OrderExecutorService {
 
             if (ocoTP.compareTo(ocoSL) <= 0) {
                 log.warn("⚠️ OCO update skip: TP ${} <= SL ${}", ocoTP, ocoSL);
-                telegramService.sendMessage("🚨 [LIVE] Posisi TANPA OCO!",
+                sendTg("🚨 [LIVE] Posisi TANPA OCO!",
                         String.format("OCO lama sudah dibatalkan tapi yang baru GAGAL dipasang " +
                                         "(TP $%.2f ≤ SL $%.2f).\nPosisi #%s sekarang TANPA proteksi exchange. " +
                                         "Cek Binance!\n⏰ %s WIB",

@@ -61,8 +61,7 @@ public class BinanceBuyService {
 
         String orderId;
         String exceptionMessage = StringUtils.EMPTY;
-        BigDecimal normalizedAmount = request.getAmount()
-                .setScale(2, RoundingMode.DOWN);
+        BigDecimal normalizedAmount = request.getAmount();
         if (request.getLimitPrice() != null
                 && request.getLimitPrice().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal normalizeLimitPrice = request.getLimitPrice()

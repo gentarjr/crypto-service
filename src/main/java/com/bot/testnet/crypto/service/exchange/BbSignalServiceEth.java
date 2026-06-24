@@ -360,7 +360,7 @@ public class BbSignalServiceEth implements SignalService {
                         "+0pts | No notable pattern"));
             }
         } else {
-            filters.add(SignalFilter.fail("BULLISH_CANDLE", "+0pts | No candle data"));
+            filters.add(SignalFilter.fail("CANDLE_PATTERN", "+0pts | No candle data"));
         }
         if (reversalGreen) confluenceGreen++;
 

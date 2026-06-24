@@ -73,7 +73,7 @@ public class CandleScheduler {
             // ✅ Orphan position recovery
             if (possibleOrphanPosition && orderExecutorService.getOpenPosition() == null) {
                 log.warn("⚠️ Detected {} BNB — possible orphan position!", bnbBalance);
-                telegramService.sendMessage(
+                sendTg(
                         "⚠️ [LIVE] Orphan Position Detected!",
                         String.format(
                                 "Ditemukan BNB saat startup.\n\n" +
@@ -92,7 +92,7 @@ public class CandleScheduler {
                     + bnbBalance + " BNB!\nCheck Binance manual!\n"
                     : "";
 
-            telegramService.sendMessage(
+            sendTg(
                     "🤖 Bot Started",
                     String.format(
                             "✅ Crypto Bot ONLINE\n\n" +
@@ -192,7 +192,7 @@ public class CandleScheduler {
 
             // Kirim alert kalau error 3x berturut-turut
             if (candleFetchErrorCount >= MAX_ERROR_BEFORE_ALERT) {
-                telegramService.sendMessage(
+                sendTg(
                         "⚠️ Candle Fetch Error",
                         String.format(
                                 "Gagal fetch candle %d kali berturut-turut!\n\n" +
@@ -217,7 +217,7 @@ public class CandleScheduler {
             int yesterdayTrades = orderExecutorService.getClosedCount();
             BigDecimal yesterdayPnl = orderExecutorService.getDailyPnl();
 
-            telegramService.sendMessage(
+            sendTg(
                     "☀️ Morning Health Check",
                     String.format(
                             "Status: <b>%s</b>\n" +
@@ -234,7 +234,7 @@ public class CandleScheduler {
                             formatTime()));
 
         } catch (Exception e) {
-            telegramService.sendMessage(
+            sendTg(
                     "❌ Health Check Error",
                     "Gagal kirim morning report!\n" +
                             "Error: " + e.getMessage());
@@ -264,7 +264,7 @@ public class CandleScheduler {
 
             if (snapshot == null) {
                 log.warn("⚠️ Insufficient data for indicators");
-                telegramService.sendMessage(
+                sendTg(
                         "⚠️ Indicator Error",
                         "Tidak bisa hitung indikator!\n" +
                                 "Kemungkinan data candle tidak cukup.\n" +
@@ -341,7 +341,7 @@ public class CandleScheduler {
             log.info("════════════════════════════════════════");
         }catch (Exception e){
             log.error("❌ Error in onNewClosedCandle: {}", e.getMessage());
-            telegramService.sendMessage(
+            sendTg(
                     "❌ Bot Error",
                     String.format(
                             "Error saat proses candle!\n\n" +
@@ -440,7 +440,7 @@ public class CandleScheduler {
                 java.time.LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
                         .format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))));
 
-        telegramService.sendMessage(title, msg.toString());
+        sendTg(title, msg.toString());
     }
 
     private void sendHoldNotificationIfRegimeChanged(Signal signal,
@@ -506,7 +506,11 @@ public class CandleScheduler {
                         .format(java.time.format.DateTimeFormatter
                                 .ofPattern("dd-MM-yyyy HH:mm:ss"))));
 
-        telegramService.sendMessage("⏸️ HOLD — Regime Changed", msg.toString());
+        sendTg("⏸️ HOLD — Regime Changed", msg.toString());
+    }
+
+    private void sendTg(String title, String body) {
+        telegramService.sendMessage("🟡 [BNB] " + title, body);
     }
 
     private String formatTime() {

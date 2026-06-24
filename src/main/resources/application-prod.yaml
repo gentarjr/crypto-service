@@ -180,7 +180,9 @@ trading:
       idle-threshold-seconds: 90
 
   hours:
-    enabled: false              # ✅ crypto 24/7, tidak perlu jam aktif
+    enabled: true
+    start-utc: 6
+    end-utc: 24
 
   mta:
     enabled: true

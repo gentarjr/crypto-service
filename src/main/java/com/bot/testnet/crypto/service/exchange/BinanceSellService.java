@@ -36,8 +36,7 @@ public class BinanceSellService {
         String timestamp = ConvertUtils.convertTimestampToString(now, Constants.DATEFORMAT_YYYYMMDDT_HHMMSSSSSZ);
 
         CurrencyPair pair = new CurrencyPair(request.getBase(), request.getQuote());
-        BigDecimal normalizedAmount = request.getAmount()
-                .setScale(2, RoundingMode.DOWN);
+        BigDecimal normalizedAmount = request.getAmount();
         MarketOrder order = new MarketOrder(Order.OrderType.ASK, normalizedAmount, pair);
 
         log.info("🛒 Placing SELL order: {} {} @ market price", request.getAmount(), request.getBase());

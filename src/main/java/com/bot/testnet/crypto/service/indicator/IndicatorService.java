@@ -234,6 +234,8 @@ public class IndicatorService {
                 .minusDI(minusDIValue)
                 .marketRegime(marketRegime)
                 .preferredStrategy(preferredStrategy)
+                .recentCandles(candleCache.getLastNClosedCandles(3))
+                .allCandles(candleCache.getLastNClosedCandles(50))
                 .build();
 
         // Logging
