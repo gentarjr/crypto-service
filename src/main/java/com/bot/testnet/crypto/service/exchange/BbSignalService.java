@@ -198,7 +198,7 @@ public class BbSignalService implements SignalService {
                     .multiply(BigDecimal.valueOf(100));
             double gapPctVal = gapPct.doubleValue();
 
-            if (gapPctVal <= 0.5) {
+            if (gapPctVal <= dynamicGateMax * 0.6) {   // 60% dari gate max = masih "deket banget"
                 score += 10;
                 positionGreen = true;
                 filters.add(SignalFilter.pass("BB_POSITION",
