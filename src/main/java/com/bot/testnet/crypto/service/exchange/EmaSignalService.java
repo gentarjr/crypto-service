@@ -288,16 +288,17 @@ public class EmaSignalService implements SignalService {
                 .multiply(BigDecimal.valueOf(100))
                 .doubleValue();
 
-        if (currentPrice.compareTo(maxAllowedPrice) <= 0) {
-            score += 10;
-            filters.add(SignalFilter.pass("PRICE_EXTENSION",
-                    String.format("+10pts | Price %.2f%% from EMA21 (within %.0f%% limit ✅)",
-                            extensionPct, (priceExtensionMax - 1) * 100)));
-        } else {
+        if (currentPrice.compareTo(maxAllowedPrice) > 0) {
             filters.add(SignalFilter.fail("PRICE_EXTENSION",
-                    String.format("+0pts | Price %.2f%% above EMA21 (max %.0f%%)",
+                    String.format("Price %.2f%% above EMA21 (max %.0f%%) — too extended, BLOCK ❌",
                             extensionPct, (priceExtensionMax - 1) * 100)));
+            return Signal.hold(StrategyType.EMA_CROSSOVER,
+                    "Price too extended from EMA21 — entry blocked", filters);
         }
+        score += 10;
+        filters.add(SignalFilter.pass("PRICE_EXTENSION",
+                String.format("+10pts | Price %.2f%% from EMA21 (within %.0f%% limit ✅)",
+                        extensionPct, (priceExtensionMax - 1) * 100)));
 
         // S6: MTA 1h scoring
         if (mtaEnabled) {

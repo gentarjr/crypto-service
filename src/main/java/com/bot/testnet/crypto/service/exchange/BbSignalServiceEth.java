@@ -157,6 +157,23 @@ public class BbSignalServiceEth implements SignalService {
                     String.format("UTC %02d:xx — Active session ✅", currentHourUtc)));
         }
 
+        BigDecimal currentPriceGate = snapshot.getCurrentPrice();
+        BigDecimal bbLowerGate = snapshot.getBbLower();
+        BigDecimal gapPctGate = currentPriceGate.subtract(bbLowerGate)
+                .divide(currentPriceGate, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100));
+
+        // Threshold dinamis: setengah dari ATR% ETH saat ini, dengan floor & ceiling
+        double atrPctNow = snapshot.getAtrPercent().doubleValue();
+        double dynamicGateMax = Math.max(0.3, Math.min(atrPctNow * 0.5, 0.8));
+
+        if (gapPctGate.doubleValue() > dynamicGateMax) {
+            filters.add(SignalFilter.fail("BB_POSITION_GATE",
+                    String.format("Price %.2f%% above lower BB (max %.2f%% @ ATR %.2f%%) — BLOCK ❌",
+                            gapPctGate.doubleValue(), dynamicGateMax, atrPctNow)));
+            return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                    "Price not at BB extreme — mean reversion premise invalid", filters);
+        }
         // ═══════════════════════════════════════
         // SCORING — menambah confidence
         // ═══════════════════════════════════════
