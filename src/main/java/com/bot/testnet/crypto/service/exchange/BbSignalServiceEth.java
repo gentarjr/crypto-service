@@ -174,6 +174,9 @@ public class BbSignalServiceEth implements SignalService {
             return Signal.hold(StrategyType.BB_MEAN_REVERSION,
                     "Price not at BB extreme — mean reversion premise invalid", filters);
         }
+        filters.add(SignalFilter.pass("BB_POSITION_GATE",
+                String.format("Price %.2f%% from lower BB ✅ (within %.2f%% gate @ ATR %.2f%%)",
+                        gapPctGate.doubleValue(), dynamicGateMax, atrPctNow)));
         // ═══════════════════════════════════════
         // SCORING — menambah confidence
         // ═══════════════════════════════════════
