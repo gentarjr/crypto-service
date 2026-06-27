@@ -294,7 +294,7 @@ src/main/java/com/bot/testnet/crypto/
 
 ## Configuration
 
-All config lives in `application-prod.yaml`. BNB and ETH are **fully separate config namespaces** — nothing is inherited by default; every ETH override must be set explicitly under `*-eth` keys or it silently falls back to its own `@Value` default, which may not match the BNB value.
+All config lives in `application-prod.yaml` — this is the **only** file that matters in production (`--spring.profiles.active=prod`). The base `application.yaml` is not used at runtime in prod and should not be treated as a source of truth; any default shown there can be stale or overridden. BNB and ETH are **fully separate config namespaces** — nothing is inherited by default; every ETH override must be set explicitly under `*-eth` keys or it silently falls back to its own `@Value` default, which may not match the BNB value.
 
 ### Trading Pairs
 
@@ -413,7 +413,6 @@ trading:
 | GET | `/api/test/eth/sentiment/status` | ETH sentiment state (currently disabled) |
 | GET | `/api/test/eth/health` | ETH pipeline health |
 | GET | `/api/ws/eth/status` | ETH WebSocket connection status |
-| GET | `/api/test/eth/paper/status` | ETH paper-trading mode status |
 
 ---
 
