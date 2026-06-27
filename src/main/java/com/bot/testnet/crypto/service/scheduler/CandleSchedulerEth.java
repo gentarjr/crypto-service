@@ -7,10 +7,12 @@ import com.bot.testnet.crypto.model.response.GetCandleResponse;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
 import com.bot.testnet.crypto.service.exchange.*;
-import com.bot.testnet.crypto.service.indicator.IndicatorService;
+import com.bot.testnet.crypto.service.exchange.CandleCacheEth;
+import com.bot.testnet.crypto.service.exchange.AdaptiveSignalServiceEth;
+import com.bot.testnet.crypto.service.exchange.BalanceServiceEth;
+import com.bot.testnet.crypto.service.indicator.IndicatorServiceEth;
 import com.bot.testnet.crypto.service.risk.TradingHoursService;
-import com.bot.testnet.crypto.service.trading.OrderExecutorService;
-import com.bot.testnet.crypto.service.trading.PaperTradingService;
+import com.bot.testnet.crypto.service.trading.OrderExecutorServiceEth;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -19,6 +21,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -28,29 +31,29 @@ import java.time.ZoneId;
 import java.util.List;
 
 @Component
+@ConditionalOnProperty(name = "trading.pair-eth.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Slf4j
-public class CandleScheduler {
+public class CandleSchedulerEth {
 
     private final CandleService candleService;
-    private final CandleCache candleCache;
-    private final IndicatorService indicatorService;
-    private final AdaptiveSignalService adaptiveSignalService;
+    private final CandleCacheEth candleCache;
+    private final IndicatorServiceEth indicatorService;
+    private final AdaptiveSignalServiceEth adaptiveSignalService;
     private final TelegramNotificationService telegramService;
-    private final PaperTradingService paperTradingService;
     private final TradingHoursService tradingHoursService;
-    private final OrderExecutorService orderExecutorService;
-    private final BalanceService balanceService;
+    private final OrderExecutorServiceEth orderExecutorService;
+    private final BalanceServiceEth balanceService;
     private final BinanceService binanceService;
 
     private String lastRegime = StringUtils.EMPTY;
     private int candleFetchErrorCount = 0;
     private static final int MAX_ERROR_BEFORE_ALERT = 3;
 
-    @Value("${trading.pair.base}")
+    @Value("${trading.pair-eth.base}")
     private String baseCurrency;
 
-    @Value("${trading.pair.quote}")
+    @Value("${trading.pair-eth.quote}")
     private String quoteCurrency;
 
     @Value("${trading.market-data.primary-interval}")
@@ -65,18 +68,18 @@ public class CandleScheduler {
         try {
             BigDecimal usdtBalance = balanceService.getAvailableCapital();
 
-            // ✅ Cek balance BNB juga — kalau ada → kemungkinan ada posisi terbuka!
+            // ✅ Cek balance ETH juga — kalau ada → kemungkinan ada posisi terbuka!
             BigDecimal bnbBalance = balanceService.getAvailableBnb();
 
             boolean possibleOrphanPosition = bnbBalance.compareTo(new BigDecimal("0.01")) > 0;
 
             // ✅ Orphan position recovery
             if (possibleOrphanPosition && orderExecutorService.getOpenPosition() == null) {
-                log.warn("⚠️ Detected {} BNB — possible orphan position!", bnbBalance);
+                log.warn("⚠️ Detected {} ETH — possible orphan position!", bnbBalance);
                 sendTg(
                         "⚠️ [LIVE] Orphan Position Detected!",
                         String.format(
-                                "Ditemukan BNB saat startup.\n\n" +
+                                "Ditemukan ETH saat startup.\n\n" +
                                         "Kemungkinan ada posisi terbuka dari run sebelumnya.\n\n" +
                                         "Bot TIDAK bisa track posisi ini secara otomatis.\n" +
                                         "Silakan:\n" +
@@ -89,7 +92,7 @@ public class CandleScheduler {
 
             String warning = possibleOrphanPosition
                     ? "\n\n🚨 <b>WARNING:</b> Detected "
-                    + bnbBalance + " BNB!\nCheck Binance manual!\n"
+                    + bnbBalance + " ETH!\nCheck Binance manual!\n"
                     : "";
 
             sendTg(
@@ -97,7 +100,7 @@ public class CandleScheduler {
                     String.format(
                             "✅ Crypto Bot ONLINE\n\n" +
                                     "📋 Config:\n" +
-                                    "   Pair: <b>BNB/USDT</b>\n" +
+                                    "   Pair: <b>ETH/USDC</b>\n" +
                                     "   Timeframe: <b>m15</b>\n" +
                                     "   Live Trading: <b>%s</b>\n\n" +
                                     "⏰ %s WIB",
@@ -136,7 +139,9 @@ public class CandleScheduler {
      * 60_000 = 60 detik = 1 menit
      * initialDelay = 10_000 = tunggu 10 detik setelah startup
      */
-    @Scheduled(fixedRate = 60000, initialDelay = 10000)
+    @Scheduled(fixedRate = 60000, initialDelay = 25000)
+    // ⚠️ initialDelay distagger (10s → 25s) supaya tidak fire bareng scheduler BNB
+    // di detik yang sama — mengurangi burst request weight ke Binance REST API.
     public void fetchLatestCandle() {
         try {
             GetCandleResponse latestCandles = candleService.fetchCandles(
@@ -310,7 +315,7 @@ public class CandleScheduler {
             }
 
             // Baru kirim snapshot (sudah lengkap dengan recentCandles + 4H)
-            paperTradingService.updateSnapshot(snapshot);
+            // (paperTradingService SENGAJA tidak dipanggil — ETH skip paper trading)
             orderExecutorService.updateSnapshot(snapshot);
 
             log.info("📋 Regime: {} → Strategy: {}",
@@ -330,7 +335,7 @@ public class CandleScheduler {
             }
 
             BigDecimal currentPrice = snapshot.getCurrentPrice();
-            paperTradingService.onNewCandle(signal, currentPrice);
+            // (paperTradingService.onNewCandle SENGAJA tidak dipanggil — ETH skip paper trading)
 
             if (orderExecutorService.isEnabled()) {
                 orderExecutorService.onNewCandle(signal, currentPrice, snapshot);
@@ -353,23 +358,13 @@ public class CandleScheduler {
     }
 
     private void logPositionStatus(BigDecimal currentPrice, GetIndicatorResponse snapshot) {
-        // Paper position
-        var paperPos = paperTradingService.getOpenPosition();
-        if (paperPos != null) {
-            BigDecimal unrealized = paperPos.calculateUnrealizedPnl(currentPrice);
-            log.info("📄 Paper #{}: entry=${} | now=${} | unrealized=${} | trailing={}",
-                    paperPos.getId(),
-                    paperPos.getEntryPrice(),
-                    currentPrice,
-                    String.format("%.4f", unrealized.doubleValue()),
-                    paperPos.isTrailingActive() ? "ACTIVE (SL=$" + paperPos.getStopLoss() + ")" : "inactive");
-        }
+        // (Paper position logging dihapus — ETH skip paper trading)
 
         // Live position
         var livePos = orderExecutorService.getOpenPosition();
         if (livePos != null) {
             BigDecimal unrealized = livePos.calculateUnrealizedPnl(currentPrice);
-            log.info("💰 Live #{}: entry=${} | now=${} | unrealized=${} | trailing={}",
+            log.info("💰 [ETH] Live #{}: entry=${} | now=${} | unrealized=${} | trailing={}",
                     livePos.getId(),
                     livePos.getEntryPrice(),
                     currentPrice,
@@ -411,7 +406,7 @@ public class CandleScheduler {
                 : "🔴 SELL Signal — " + signal.getStrategy();
 
         StringBuilder msg = new StringBuilder();
-        msg.append(String.format("💰 Price: <b>%.4f</b> USDT\n\n", signal.getPrice().doubleValue()));
+        msg.append(String.format("💰 Price: <b>%.4f</b> USDC\n\n", signal.getPrice().doubleValue()));
 
         if (signal.getStopLoss() != null) {
             msg.append(String.format("🛑 Stop Loss:   <b>%.4f</b>\n", signal.getStopLoss().doubleValue()));
@@ -420,7 +415,7 @@ public class CandleScheduler {
             msg.append(String.format("🎯 Take Profit: <b>%.4f</b>\n", signal.getTakeProfit().doubleValue()));
         }
         if (signal.getPositionSize() != null) {
-            msg.append(String.format("📊 Position:    <b>$%.2f USDT</b>\n", signal.getPositionSize().doubleValue()));
+            msg.append(String.format("📊 Position:    <b>$%.2f USDC</b>\n", signal.getPositionSize().doubleValue()));
         }
         if (signal.getRiskAmount() != null) {
             msg.append(String.format("⚡ Risk:        <b>$%.2f (1%%)</b>\n", signal.getRiskAmount().doubleValue()));
@@ -509,8 +504,11 @@ public class CandleScheduler {
         sendTg("⏸️ HOLD — Regime Changed", msg.toString());
     }
 
+    /**
+     * ✅ FIX sama kayak BNB — label pair otomatis di semua notif scheduler ini.
+     */
     private void sendTg(String title, String body) {
-        telegramService.sendMessage("🟡 [BNB] " + title, body);
+        telegramService.sendMessage("🔷 [ETH] " + title, body);
     }
 
     private String formatTime() {

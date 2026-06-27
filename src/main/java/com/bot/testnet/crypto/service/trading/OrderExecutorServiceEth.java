@@ -17,6 +17,7 @@ import com.bot.testnet.crypto.service.risk.TrailingStopHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -38,41 +39,42 @@ import java.util.concurrent.locks.ReentrantLock;
  * 5. Close saat hit SL/TP
  */
 @Service
+@ConditionalOnProperty(name = "trading.pair-eth.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Log4j2
-public class OrderExecutorService {
+public class OrderExecutorServiceEth {
 
     private final BinanceService binanceService;
     private final BinanceBuyService binanceBuyService;
     private final BinanceSellService binanceSellService;
     private final TelegramNotificationService telegramService;
     private final TrailingStopHelper trailingStopHelper;
-    private final BalanceService balanceService;
+    private final BalanceServiceEth balanceService;
     private final BinanceOcoService binanceOcoService;
     private final TradeHistoryRepository tradeHistoryRepository;
 
-    @Value("${trading.live.enabled:false}")
+    @Value("${trading.live-eth.enabled:false}")
     private boolean liveEnabled;
 
-    @Value("${trading.pair.base:BNB}")
+    @Value("${trading.pair-eth.base:ETH}")
     private String baseCurrency;
 
-    @Value("${trading.risk.max-slippage-percent:0.3}")
+    @Value("${trading.risk-eth.max-slippage-percent:0.3}")
     private double maxSlippagePercent;
 
-    @Value("${trading.pair.quote:USDT}")
+    @Value("${trading.pair-eth.quote:USDC}")
     private String quoteCurrency;
 
-    @Value("${trading.risk.max-daily-loss-percent:3.0}")
+    @Value("${trading.risk-eth.max-daily-loss-percent:3.0}")
     private double maxDailyLossPercent;
 
-    @Value("${trading.risk.max-consecutive-losses:3}")
+    @Value("${trading.risk-eth.max-consecutive-losses:3}")
     private int maxConsecutiveLosses;
 
-    @Value("${trading.risk.cooldown-minutes:30}")
+    @Value("${trading.risk-eth.cooldown-minutes:30}")
     private int cooldownMinutes;
 
-    @Value("${trading.risk.trailing-atr-multiplier:1.5}")
+    @Value("${trading.risk-eth.trailing-atr-multiplier:1.5}")
     private double trailingAtrMultiplier;
 
     @Value("${trading.hours.enabled:true}")
@@ -84,26 +86,36 @@ public class OrderExecutorService {
     @Value("${trading.hours.end-utc:21}")
     private int tradingHourEnd;
 
-    @Value("${trading.risk.partial-tp-enabled:true}")
+    @Value("${trading.risk-eth.partial-tp-enabled:true}")
     private boolean partialTpEnabled;
 
-    @Value("${trading.risk.partial-tp-ratio:0.5}")
+    @Value("${trading.risk-eth.partial-tp-ratio:0.5}")
     private double partialTpRatio;
 
-    @Value("${trading.risk.bb-cooldown-minutes:30}")
+    @Value("${trading.risk-eth.bb-cooldown-minutes:30}")
     private int bbCooldownMinutes;
 
-    @Value("${trading.risk.timeout-hours:4}")
+    @Value("${trading.risk-eth.timeout-hours:4}")
     private int timeoutHours;
 
-    @Value("${trading.risk.timeout-profit-threshold:0.5}")
+    @Value("${trading.risk-eth.timeout-profit-threshold:0.5}")
     private double timeoutProfitThreshold;
 
-    @Value("${trading.risk.risk-per-trade-percent:1.0}")
+    @Value("${trading.risk-eth.risk-per-trade-percent:1.0}")
     private double riskPerTradePercent;
 
-    @Value("${trading.risk.max-position-percent:75.0}")
+    @Value("${trading.risk-eth.max-position-percent:75.0}")
     private double maxPositionPercent;
+
+    // ⚠️ WAJIB VERIFIKASI ke Binance exchangeInfo endpoint untuk symbol ETHUSDC
+    // (filter LOT_SIZE → stepSize, dan MIN_NOTIONAL) sebelum live!
+    // Nilai default di bawah ini TEBAKAN, bukan hasil verifikasi — jangan percaya buta.
+    // Cara cek: GET https://api.binance.com/api/v3/exchangeInfo?symbol=ETHUSDC
+    @Value("${trading.risk-eth.qty-decimal-places:4}")
+    private int qtyDecimalPlaces;
+
+    @Value("${trading.risk-eth.min-quantity:0.001}")
+    private double minQuantityDouble;
 
     // ═══════════════════════════════════════════════════
     // State
@@ -293,7 +305,7 @@ public class OrderExecutorService {
                         String.format(
                                 "USDT tidak cukup untuk trading!\n\n" +
                                         "Minimum: <b>$10</b>\n\n" +
-                                        "Cek apakah ada BNB nyangkut di Binance!\n" +
+                                        "Cek apakah ada ETH nyangkut di Binance!\n" +
                                         "⏰ %s WIB",
                                 formatTime()));
                 return;
@@ -302,7 +314,7 @@ public class OrderExecutorService {
             BigDecimal positionSize = signal.getPositionSize();
             if (positionSize == null || positionSize.compareTo(BigDecimal.ZERO) <= 0) {
                 // Fallback: signal tidak ngirim ukuran posisi -> hitung dari SALDO ASLI Binance
-                BigDecimal capital = balanceService.getTotalCapital();   // equity nyata (USDT + BNB)
+                BigDecimal capital = balanceService.getTotalCapital();   // equity nyata (USDC + ETH)
                 BigDecimal entry = (signal.getPrice() != null
                         && signal.getPrice().compareTo(BigDecimal.ZERO) > 0)
                         ? signal.getPrice() : currentPrice;
@@ -345,12 +357,12 @@ public class OrderExecutorService {
                 return;
             }
 
-            // 2. Hitung quantity BNB yang akan dibeli
+            // 2. Hitung quantity ETH yang akan dibeli
             BigDecimal quantity = positionSize.divide(currentPrice, 6, RoundingMode.HALF_UP);
             quantity = roundQuantity(quantity);  // ✨ Round ke precision Binance
 
             if (!isQuantitySufficient(quantity)) {
-                log.warn("⚠️ Quantity too small: {} BNB (min 0.01)", quantity);
+                log.warn("⚠️ [ETH] Quantity too small: {} ETH (min {})", quantity, minQuantityDouble);
                 sendTg("⚠️ [LIVE] Order Skipped",
                         "Quantity too small untuk trading. Increase position size.");
                 return;
@@ -438,9 +450,9 @@ public class OrderExecutorService {
 
             BigDecimal adjustedQuantity = positionSize
                     .divide(limitPrice, 6, RoundingMode.HALF_UP)
-                    .setScale(3, RoundingMode.DOWN);
+                    .setScale(qtyDecimalPlaces, RoundingMode.DOWN);
 
-            log.info("📐 Quantity adjusted for limit price: {} → {} BNB (limitPrice=${})",
+            log.info("📐 Quantity adjusted for limit price: {} → {} ETH (limitPrice=${})",
                     quantity, adjustedQuantity, limitPrice);
 
             quantity = adjustedQuantity;
@@ -524,15 +536,15 @@ public class OrderExecutorService {
                                 formatTime()));
                 try {
                     BigDecimal sellAmt = orderResult.getFilledAmount() != null
-                            ? orderResult.getFilledAmount().setScale(3, RoundingMode.DOWN)
-                            : quantity.setScale(3, RoundingMode.DOWN);
+                            ? orderResult.getFilledAmount().setScale(qtyDecimalPlaces, RoundingMode.DOWN)
+                            : quantity.setScale(qtyDecimalPlaces, RoundingMode.DOWN);
                     binanceSellService.placeMarketSellOrder(
                             PostSellRequest.builder()
                                     .base(baseCurrency)
                                     .quote(quoteCurrency)
                                     .amount(sellAmt)
                                     .build());
-                    log.info("✅ Post-fill sell executed: {} BNB", sellAmt);
+                    log.info("✅ Post-fill sell executed: {} ETH", sellAmt);
                 } catch (Exception sellEx) {
                     log.error("❌ Post-fill sell failed: {}", sellEx.getMessage());
                     sendTg(
@@ -591,7 +603,7 @@ public class OrderExecutorService {
                 if (orderResult.getFilledAmount() != null
                         && orderResult.getFilledAmount().compareTo(BigDecimal.ZERO) > 0) {
                     openPosition.setQuantity(
-                            orderResult.getFilledAmount().setScale(3, RoundingMode.DOWN));
+                            orderResult.getFilledAmount().setScale(qtyDecimalPlaces, RoundingMode.DOWN));
                     log.info("📐 Position qty updated to actual fill: {}",
                             openPosition.getQuantity());
                 }
@@ -841,13 +853,12 @@ public class OrderExecutorService {
 
             BigDecimal partialQty = openPosition.getQuantity()
                     .multiply(BigDecimal.valueOf(partialTpRatio))
-                    .setScale(3, RoundingMode.DOWN);
-
+                    .setScale(qtyDecimalPlaces, RoundingMode.DOWN);
             try {
                 BigDecimal actualBal = balanceService.getAvailableBnb();
                 if (actualBal != null && actualBal.compareTo(partialQty) < 0) {
                     BigDecimal capped = actualBal.multiply(new BigDecimal("0.999"))
-                            .setScale(3, RoundingMode.DOWN);
+                            .setScale(qtyDecimalPlaces, RoundingMode.DOWN);
                     log.warn("⚠️ Partial TP qty {} > actual balance {} — capped to {}",
                             partialQty, actualBal, capped);
                     partialQty = capped;
@@ -856,7 +867,7 @@ public class OrderExecutorService {
                 log.warn("⚠️ Cannot verify balance for partial TP cap: {}", e.getMessage());
             }
 
-            if (partialQty.compareTo(new BigDecimal("0.001")) < 0) {
+            if (partialQty.compareTo(BigDecimal.valueOf(minQuantityDouble)) < 0) {
                 log.warn("⚠️ Partial TP qty too small: {} — skip", partialQty);
                 openPosition.setPartialTpExecuted(false); // reset flag
                 return;
@@ -874,7 +885,7 @@ public class OrderExecutorService {
                     // Update quantity remaining
                     BigDecimal remainingQty = openPosition.getQuantity()
                             .subtract(partialQty)
-                            .setScale(3, RoundingMode.DOWN);
+                            .setScale(qtyDecimalPlaces, RoundingMode.DOWN);
                     openPosition.setQuantity(remainingQty);
 
                     // Hitung partial profit
@@ -896,8 +907,8 @@ public class OrderExecutorService {
                             .setScale(2, RoundingMode.HALF_UP);
                     openPosition.ratchetStopLoss(newSL);
 
-                    log.info("✅ Partial TP: sold {} BNB @ ${}, net profit=${}, " +
-                                    "remaining={} BNB, SL→${}",
+                    log.info("✅ Partial TP: sold {} ETH @ ${}, net profit=${}, " +
+                                    "remaining={} ETH, SL→${}",
                             partialQty, currentPrice,
                             partialNetProfit, remainingQty, newSL);
 
@@ -954,20 +965,20 @@ public class OrderExecutorService {
                 catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
             }
 
-            // Cek BNB balance setelah cancel OCO
+            // Cek ETH balance setelah cancel OCO
             BigDecimal actualBnbBalance;
             try {
                 actualBnbBalance = balanceService.getAvailableBnb();
             } catch (Exception e) {
-                log.warn("Cannot fetch BNB balance: {}", e.getMessage());
+                log.warn("Cannot fetch ETH balance: {}", e.getMessage());
                 actualBnbBalance = positionToClose.getQuantity();
             }
 
-            // ✅ Kalau BNB < 0.01 → OCO sudah eksekusi duluan
+            // ✅ Kalau ETH < minQuantity → OCO sudah eksekusi duluan
             // Skip manual SELL
             if (actualBnbBalance == null
-                    || actualBnbBalance.compareTo(new BigDecimal("0.01")) < 0) {
-                log.info("✅ BNB = 0 — position already closed by OCO");
+                    || actualBnbBalance.compareTo(BigDecimal.valueOf(minQuantityDouble)) < 0) {
+                log.info("✅ ETH = 0 — position already closed by OCO");
                 sendTg(
                         "✅ [LIVE] Position Closed by OCO",
                         String.format(
@@ -982,21 +993,21 @@ public class OrderExecutorService {
                 return;
             }
 
-            // BNB masih ada → SELL manual
+            // ETH masih ada → SELL manual
             try {
                 BigDecimal feeBuffer = actualBnbBalance
                         .multiply(new BigDecimal("0.001")) // 0.1% buffer
                         .setScale(4, RoundingMode.UP);
                 BigDecimal sellAmount = actualBnbBalance
                         .subtract(feeBuffer)
-                        .setScale(3, RoundingMode.DOWN);
+                        .setScale(qtyDecimalPlaces, RoundingMode.DOWN);
 
-                BigDecimal minQty = new BigDecimal("0.001");
+                BigDecimal minQty = BigDecimal.valueOf(minQuantityDouble);
                 if (sellAmount.compareTo(minQty) < 0) {
-                    sellAmount = actualBnbBalance.setScale(3, RoundingMode.DOWN);
+                    sellAmount = actualBnbBalance.setScale(qtyDecimalPlaces, RoundingMode.DOWN);
                 }
 
-                log.info("💰 Sell amount: {} BNB (balance: {}, fee buffer: {})",
+                log.info("💰 Sell amount: {} ETH (balance: {}, fee buffer: {})",
                         sellAmount, actualBnbBalance, feeBuffer);
 
                 var sellResult = binanceSellService.placeMarketSellOrder(
@@ -1022,10 +1033,6 @@ public class OrderExecutorService {
                                     sellResult.getStatus(),
                                     exitPrice,
                                     formatTime()));
-                    // ✅ FIX: SEBELUMNYA langsung `return` tanpa save ke
-                    // TradeHistory — trade hilang dari tracking, dan
-                    // consecutiveLosses/dailyPnl gak ke-update (safety
-                    // mechanism diam-diam gak ngitung trade ini).
                     updateCloseStats(positionToClose, exitPrice, reason + "_MANUAL");
                     // openPosition sudah null di atas → tidak loop ✅
                     return;
@@ -1049,7 +1056,9 @@ public class OrderExecutorService {
                                 e.getMessage(),
                                 exitPrice,
                                 formatTime()));
-                // ✅ FIX: sama kayak branch SELL FAILED di atas.
+                // ✅ FIX: sama kayak branch SELL FAILED di atas — tetap catat
+                // ke TradeHistory pakai estimasi, jangan biarin trade hilang
+                // dari tracking + consecutiveLosses/dailyPnl gak ke-update.
                 updateCloseStats(positionToClose, exitPrice, reason + "_MANUAL");
                 // openPosition sudah null → tidak loop ✅
             }
@@ -1161,8 +1170,12 @@ public class OrderExecutorService {
     // Private: Notifications
     // ═══════════════════════════════════════════════════
 
+    /**
+     * ✅ FIX: sama kayak versi BNB — semua notif Telegram dari class ini
+     * sekarang otomatis dikasih label pair, biar gak ketuker.
+     */
     private void sendTg(String title, String body) {
-        telegramService.sendMessage("🟡 [BNB] " + title, body);
+        telegramService.sendMessage("🔷 [ETH] " + title, body);
     }
 
     private void sendLivePositionOpenedNotif(LivePosition position, String ocoStatus) {
@@ -1268,7 +1281,7 @@ public class OrderExecutorService {
 
             TradeHistory history = TradeHistory.builder()
                     .id(position.getId())
-                    .pair("BNB")
+                    .pair("ETH")
                     .strategy(position.getStrategy() != null
                             ? position.getStrategy().name() : "UNKNOWN")
                     .entryPrice(position.getEntryPrice())
@@ -1344,14 +1357,14 @@ public class OrderExecutorService {
     }
 
     private BigDecimal roundQuantity(BigDecimal quantity) {
-        // BNB minimum order: 0.01 BNB, step size: 0.01
+        // ⚠️ ETH precision — VERIFIKASI ke Binance exchangeInfo (symbol ETHUSDC) sebelum live!
         // Selalu round DOWN supaya tidak exceed balance
-        return quantity.setScale(3, RoundingMode.DOWN);
+        return quantity.setScale(qtyDecimalPlaces, RoundingMode.DOWN);
     }
 
     private boolean isQuantitySufficient(BigDecimal quantity) {
-        // BNB minimum notional: $10 USDT, minimum qty: 0.01 BNB
-        return quantity.compareTo(new BigDecimal("0.01")) >= 0;
+        // ⚠️ ETH min notional — VERIFIKASI ke Binance exchangeInfo (symbol ETHUSDC) sebelum live!
+        return quantity.compareTo(BigDecimal.valueOf(minQuantityDouble)) >= 0;
     }
 
     private void checkAndResetDaily() {
@@ -1422,7 +1435,7 @@ public class OrderExecutorService {
 
             BigDecimal ocoQty = actualBnb
                     .multiply(new BigDecimal("0.999"))
-                    .setScale(3, RoundingMode.DOWN);
+                    .setScale(qtyDecimalPlaces, RoundingMode.DOWN);
             BigDecimal ocoTP  = position.getTakeProfit()
                     .setScale(2, RoundingMode.HALF_UP);
             BigDecimal ocoSL  = position.getStopLoss()
@@ -1464,17 +1477,17 @@ public class OrderExecutorService {
     private BigDecimal getActualBnbForOco(BigDecimal fallback) {
         try {
             BigDecimal actual = balanceService.getAvailableBnb();
-            if (actual != null && actual.compareTo(new BigDecimal("0.01")) > 0) {
+            if (actual != null && actual.compareTo(BigDecimal.valueOf(minQuantityDouble)) > 0) {
                 BigDecimal qty = actual
                         .multiply(new BigDecimal("0.999"))
-                        .setScale(3, RoundingMode.DOWN);
+                        .setScale(qtyDecimalPlaces, RoundingMode.DOWN);
                 log.info("📋 OCO qty from actual balance: {} (fallback: {})",
                         qty, fallback);
                 return qty;
             }
         } catch (Exception e) {
-            log.warn("Cannot fetch BNB for OCO, using position qty: {}", e.getMessage());
+            log.warn("Cannot fetch ETH for OCO, using position qty: {}", e.getMessage());
         }
-        return fallback.setScale(3, RoundingMode.DOWN);
+        return fallback.setScale(qtyDecimalPlaces, RoundingMode.DOWN);
     }
 }

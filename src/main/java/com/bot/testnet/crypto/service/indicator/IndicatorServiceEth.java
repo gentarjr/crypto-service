@@ -2,11 +2,12 @@ package com.bot.testnet.crypto.service.indicator;
 
 import com.bot.testnet.crypto.model.dto.Candle;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
-import com.bot.testnet.crypto.service.exchange.CandleCache;
+import com.bot.testnet.crypto.service.exchange.CandleCacheEth;
 import com.bot.testnet.crypto.service.scheduler.BarSeriesConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.indicators.ATRIndicator;
@@ -30,11 +31,12 @@ import java.time.Instant;
 import java.util.List;
 
 @Service
+@ConditionalOnProperty(name = "trading.pair-eth.enabled", havingValue = "true")
 @Log4j2
 @RequiredArgsConstructor
-public class IndicatorService {
+public class IndicatorServiceEth {
 
-    private final CandleCache candleCache;
+    private final CandleCacheEth candleCache;
     private final BarSeriesConverter converter;
 
     @Value("${trading.indicators.ema-fast-period:9}")
@@ -94,38 +96,31 @@ public class IndicatorService {
     @Value("${trading.indicators.adx-strong-trend-threshold:40}")
     private int adxStrongTrendThreshold;
 
-    /**
-     * Hitung semua indikator dari cache candle
-     *
-     * @return IndicatorSnapshot (atau null kalau data tidak cukup)
-     */
     public GetIndicatorResponse calculate() {
         List<Candle> candles = candleCache.getAllCandles();
 
-        // Validasi minimum data
         int minRequired = Math.max(
                 Math.max(emaSlowPeriod, rsiPeriod),
                 Math.max(
                         Math.max(volumeMAPeriod, atrPeriod),
-                        Math.max(bbPeriod, adxPeriod * 2)  // ✨ ADX butuh 2x period untuk reliable
+                        Math.max(bbPeriod, adxPeriod * 2)
                 )
         ) + 5;
 
         if (candles.size() < minRequired) {
-            log.warn("⚠️ Not enough candles ({} < {}), cannot calculate indicators",
+            log.warn("⚠️ [ETH] Not enough candles ({} < {}), cannot calculate indicators",
                     candles.size(), minRequired);
             return null;
         }
 
-        // Convert ke BarSeries ta4j
-        BarSeries series = converter.convert(candles, "BNBUSDT_indicator");
+        // ✅ FIX: label diganti ke ETHUSDC (sebelumnya hardcoded BNBUSDT di file asal)
+        BarSeries series = converter.convert(candles, "ETHUSDC_indicator");
 
         if (series.getBarCount() < minRequired) {
-            log.warn("⚠️ BarSeries too small after conversion");
+            log.warn("⚠️ [ETH] BarSeries too small after conversion");
             return null;
         }
 
-        // Initialize indicators
         ClosePriceIndicator closePrice = new ClosePriceIndicator(series);
         EMAIndicator emaFast = new EMAIndicator(closePrice, emaFastPeriod);
         EMAIndicator emaSlow = new EMAIndicator(closePrice, emaSlowPeriod);
@@ -143,21 +138,18 @@ public class IndicatorService {
         BollingerBandsUpperIndicator bbUpper = new BollingerBandsUpperIndicator(bbMiddle, bbStdDevIndicator, series.numOf(bbStdDev));
         BollingerBandsLowerIndicator bbLower = new BollingerBandsLowerIndicator(bbMiddle, bbStdDevIndicator, series.numOf(bbStdDev));
 
-        // Get last index (candle terbaru)
         int lastIndex = series.getEndIndex();
         if (candleCache.isLastCandleLive() && lastIndex > 0) {
             lastIndex = lastIndex - 1;
         }
         int prevIndex = lastIndex - 1;
 
-        // Hitung values
         Num currentClose = closePrice.getValue(lastIndex);
         Num emaFastNow = emaFast.getValue(lastIndex);
         Num emaSlowNow = emaSlow.getValue(lastIndex);
         Num emaFastPrev = emaFast.getValue(prevIndex);
         Num emaSlowPrev = emaSlow.getValue(prevIndex);
         Num rsiNow = rsi.getValue(lastIndex);
-        // ✨ NEW: Calculate volume ratio & zone
         Num currentVolumeNow = volume.getValue(lastIndex);
         Num volumeMANow = volumeMA.getValue(lastIndex);
         Num atrNow = atr.getValue(lastIndex);
@@ -168,20 +160,16 @@ public class IndicatorService {
         Num plusDINow = plusDIIndicator.getValue(lastIndex);
         Num minusDINow = minusDIIndicator.getValue(lastIndex);
 
-        // Detect crossover
         boolean goldenCross = emaFastPrev.isLessThanOrEqual(emaSlowPrev)
                 && emaFastNow.isGreaterThan(emaSlowNow);
         boolean deathCross = emaFastPrev.isGreaterThanOrEqual(emaSlowPrev)
                 && emaFastNow.isLessThan(emaSlowNow);
 
-        // Determine trend
         String trend = emaFastNow.isGreaterThan(emaSlowNow) ? "BULLISH" : "BEARISH";
 
-        // ✨ NEW: RSI zone classification
         BigDecimal rsiValue = toBigDecimal(rsiNow);
         String rsiZone = classifyRsiZone(rsiValue);
 
-        // ✨ NEW: Calculate volume ratio & zone
         BigDecimal currentVolumeValue = toBigDecimal(currentVolumeNow);
         BigDecimal volumeMAValue = toBigDecimal(volumeMANow);
         BigDecimal volumeRatio = calculateVolumeRatio(currentVolumeValue, volumeMAValue);
@@ -204,7 +192,6 @@ public class IndicatorService {
         String marketRegime = classifyMarketRegime(adxValue);
         String preferredStrategy = determinePreferredStrategy(marketRegime);
 
-        // Build snapshot
         GetIndicatorResponse snapshot = GetIndicatorResponse.builder()
                 .calculatedAt(Instant.now())
                 .candleTime(candles.get(lastIndex).getCloseTime())
@@ -238,7 +225,6 @@ public class IndicatorService {
                 .allCandles(candleCache.getLastNClosedCandles(50))
                 .build();
 
-        // Logging
         logSnapshot(snapshot);
 
         return snapshot;
@@ -248,9 +234,6 @@ public class IndicatorService {
         return new BigDecimal(num.toString()).setScale(8, RoundingMode.HALF_UP);
     }
 
-    /**
-     * ✨ NEW: Classify RSI value ke zone
-     */
     private String classifyRsiZone(BigDecimal rsi) {
         if (rsi.compareTo(BigDecimal.valueOf(80)) > 0) return "EXTREME_OVERBOUGHT";
         if (rsi.compareTo(BigDecimal.valueOf(rsiOverbought)) > 0) return "OVERBOUGHT";
@@ -259,9 +242,6 @@ public class IndicatorService {
         return "NEUTRAL";
     }
 
-    /**
-     * ✨ NEW: Calculate volume ratio (current / MA)
-     */
     private BigDecimal calculateVolumeRatio(BigDecimal current, BigDecimal ma) {
         if (ma == null || ma.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;
@@ -269,9 +249,6 @@ public class IndicatorService {
         return current.divide(ma, 4, RoundingMode.HALF_UP);
     }
 
-    /**
-     * ✨ NEW: Classify volume zone
-     */
     private String classifyVolumeZone(BigDecimal ratio) {
         double ratioValue = ratio.doubleValue();
 
@@ -281,10 +258,6 @@ public class IndicatorService {
         return "NORMAL";
     }
 
-    /**
-     * ✨ NEW: Calculate ATR sebagai % dari price
-     * Berguna untuk compare antar pair (relative volatility)
-     */
     private BigDecimal calculateAtrPercent(BigDecimal atr, BigDecimal price) {
         if (price == null || price.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;
@@ -293,14 +266,6 @@ public class IndicatorService {
                 .multiply(BigDecimal.valueOf(100));
     }
 
-    /**
-     * ✨ NEW: Classify volatility zone berdasarkan ATR %
-     * Thresholds typical untuk BNB/USDT 15m:
-     *   < 0.2% → LOW (market quiet, mungkin dead)
-     *   0.2-0.5% → NORMAL (default)
-     *   0.5-1.0% → HIGH (volatile, hati-hati)
-     *   > 1.0% → EXTREME (news event?)
-     */
     private String classifyVolatilityZone(BigDecimal atrPercent) {
         double value = atrPercent.doubleValue();
 
@@ -310,10 +275,6 @@ public class IndicatorService {
         return "NORMAL";
     }
 
-    /**
-     * ✨ NEW: Calculate BB Width (sebagai %)
-     * BB Width = (Upper - Lower) / Middle × 100
-     */
     private BigDecimal calculateBbWidth(BigDecimal upper, BigDecimal lower, BigDecimal middle) {
         if (middle == null || middle.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;
@@ -323,35 +284,25 @@ public class IndicatorService {
                 .multiply(BigDecimal.valueOf(100));
     }
 
-    /**
-     * ✨ NEW: Calculate %B
-     * %B = (Price - Lower) / (Upper - Lower)
-     */
     private BigDecimal calculateBbPercentB(BigDecimal price, BigDecimal upper, BigDecimal lower) {
         BigDecimal bandRange = upper.subtract(lower);
         if (bandRange.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.valueOf(0.5);  // edge case
+            return BigDecimal.valueOf(0.5);
         }
         return price.subtract(lower)
                 .divide(bandRange, 4, RoundingMode.HALF_UP);
     }
 
-    /**
-     * ✨ NEW: Classify BB zone
-     */
     private String classifyBbZone(BigDecimal price, BigDecimal upper, BigDecimal middle, BigDecimal lower) {
-        if (price.compareTo(upper) > 0) return "ABOVE_UPPER";       // very extreme high
+        if (price.compareTo(upper) > 0) return "ABOVE_UPPER";
         if (price.compareTo(upper) == 0) return "AT_UPPER";
-        if (price.compareTo(middle) > 0) return "UPPER_HALF";       // di antara middle & upper
+        if (price.compareTo(middle) > 0) return "UPPER_HALF";
         if (price.compareTo(middle) == 0) return "AT_MIDDLE";
-        if (price.compareTo(lower) > 0) return "LOWER_HALF";        // di antara middle & lower
+        if (price.compareTo(lower) > 0) return "LOWER_HALF";
         if (price.compareTo(lower) == 0) return "AT_LOWER";
-        return "BELOW_LOWER";                                        // very extreme low
+        return "BELOW_LOWER";
     }
 
-    /**
-     * ✨ NEW: Classify market regime berdasarkan ADX
-     */
     private String classifyMarketRegime(BigDecimal adx) {
         double value = adx.doubleValue();
 
@@ -361,9 +312,6 @@ public class IndicatorService {
         return "RANGING";
     }
 
-    /**
-     * ✨ NEW: Tentukan strategi yang sesuai untuk regime saat ini
-     */
     private String determinePreferredStrategy(String regime) {
         return switch (regime) {
             case "STRONG_TRENDING", "TRENDING" -> "EMA_CROSSOVER";
@@ -374,89 +322,30 @@ public class IndicatorService {
     }
 
     private void logSnapshot(GetIndicatorResponse snapshot) {
-        log.info("📊 Indicator Snapshot:");
+        log.info("📊 [ETH] Indicator Snapshot:");
         log.info("   Price:    {}", snapshot.getCurrentPrice());
         log.info("   EMA{}:     {} ", emaFastPeriod, snapshot.getEmaFast());
         log.info("   EMA{}:    {}", emaSlowPeriod, snapshot.getEmaSlow());
-        log.info("   Gap:      {} ({}%)",
-                snapshot.getEmaGap(),
-                snapshot.getEmaGapPercent());
         log.info("   Trend:    {}", snapshot.getTrend());
         log.info("   RSI({}):    {} [{}]", rsiPeriod, snapshot.getRsi(), snapshot.getRsiZone());
-        log.info("   Volume:    {}", snapshot.getCurrentVolume());
-        log.info("   Vol MA({}): {}", volumeMAPeriod, snapshot.getVolumeMA());
         log.info("   Vol Ratio: {}x [{}]", snapshot.getVolumeRatio(), snapshot.getVolumeZone());
-
         log.info("   ATR({}):    {} ({}%) [{}]",
-                atrPeriod,
-                snapshot.getAtr(),
-                snapshot.getAtrPercent(),
-                snapshot.getVolatilityZone());
-
-        log.info("   BB Upper:  {}", snapshot.getBbUpper());
-        log.info("   BB Mid:    {}", snapshot.getBbMiddle());
-        log.info("   BB Lower:  {}", snapshot.getBbLower());
+                atrPeriod, snapshot.getAtr(), snapshot.getAtrPercent(), snapshot.getVolatilityZone());
         log.info("   BB Width:  {}%", snapshot.getBbWidth());
         log.info("   %B:        {} [{}]", snapshot.getBbPercentB(), snapshot.getBbZone());
         log.info("   ADX({}):    {} [{}]", adxPeriod, snapshot.getAdx(), snapshot.getMarketRegime());
-        log.info("   +DI:       {}", snapshot.getPlusDI());
-        log.info("   -DI:       {}", snapshot.getMinusDI());
         log.info("   📋 Preferred Strategy: {}", snapshot.getPreferredStrategy());
 
-        BigDecimal slMultiplier = BigDecimal.valueOf(atrSlMultiplier);
-        BigDecimal tpMultiplier = BigDecimal.valueOf(atrTpMultiplier);
-        log.info("   Sample SL: {} (-{}× ATR)",
-                snapshot.calculateLongStopLoss(slMultiplier),
-                atrSlMultiplier);
-        log.info("   Sample TP: {} (+{}× ATR)",
-                snapshot.calculateLongTakeProfit(tpMultiplier),
-                atrTpMultiplier);
-        log.info("   SL distance: {}%", snapshot.getSlDistancePercent(slMultiplier));
-
-
         if (snapshot.isGoldenCross()) {
-            log.info("   🟢 GOLDEN CROSS detected!");
+            log.info("   🟢 [ETH] GOLDEN CROSS detected!");
         } else if (snapshot.isDeathCross()) {
-            log.info("   🔴 DEATH CROSS detected!");
-        }
-
-        if (snapshot.isExtremeOverbought()) {
-            log.info("   🚨 EXTREME OVERBOUGHT!");
-        } else if (snapshot.isExtremeOversold()) {
-            log.info("   🚨 EXTREME OVERSOLD!");
-        }
-
-        // ✨ NEW
-        if (snapshot.isVolumeSurge()) {
-            log.info("   📈 VOLUME SURGE detected!");
-        } else if (snapshot.isVolumeLow()) {
-            log.info("   📉 LOW VOLUME warning");
-        }
-
-        if (snapshot.isHighVolatility()) {
-            log.info("   ⚡ HIGH VOLATILITY — consider wider SL");
-        }
-
-        // ✨ NEW: BB alerts
-        if (snapshot.isTouchLowerBand()) {
-            log.info("   🎯 PRICE AT/BELOW LOWER BAND (potential BUY zone)");
-        } else if (snapshot.isTouchUpperBand()) {
-            log.info("   🎯 PRICE AT/ABOVE UPPER BAND (potential SELL zone)");
-        }
-
-        if (snapshot.isBbSqueeze()) {
-            log.info("   🤏 BB SQUEEZE — low volatility, breakout brewing");
-        }
-
-        if (snapshot.isTransitionZone()) {
-            log.info("   ⏸️  TRANSITION ZONE — NO TRADE (uncertain regime)");
+            log.info("   🔴 [ETH] DEATH CROSS detected!");
         }
     }
 
     public BigDecimal getEma50_4H(List<Candle> candles4h) {
         if (candles4h == null || candles4h.size() < 50) return null;
 
-        // Simple EMA calculation
         BigDecimal multiplier = BigDecimal.valueOf(2.0 / (50 + 1));
         BigDecimal ema = candles4h.get(0).getClose();
 

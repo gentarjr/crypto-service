@@ -3,11 +3,12 @@ package com.bot.testnet.crypto.service.exchange;
 import com.bot.testnet.crypto.model.dto.*;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.service.indicator.CandlePatternHelper;
-import com.bot.testnet.crypto.service.indicator.SentimentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import com.bot.testnet.crypto.service.indicator.SentimentServiceEth;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -18,11 +19,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@ConditionalOnProperty(name = "trading.pair-eth.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Log4j2
-public class BbSignalService implements SignalService {
-    private final BalanceService balanceService;
-    private final SentimentService sentimentService;
+public class BbSignalServiceEth implements SignalService {
+    private final BalanceServiceEth balanceService;
+    private final SentimentServiceEth sentimentService;
     private final CandlePatternHelper candlePatternHelper;
 
     @Value("${trading.indicators.adx-ranging-threshold:20}")
@@ -46,13 +48,13 @@ public class BbSignalService implements SignalService {
     @Value("${trading.strategy.bb.strong-buy-score-threshold:80}")
     private int strongBuyScoreThreshold;
 
-    @Value("${trading.risk.modal:300}")
+    @Value("${trading.risk-eth.modal:300}")
     private double modal;
 
-    @Value("${trading.risk.risk-per-trade-percent:1.0}")
+    @Value("${trading.risk-eth.risk-per-trade-percent:1.0}")
     private double riskPerTradePercent;
 
-    @Value("${trading.risk.max-position-percent:90.0}")
+    @Value("${trading.risk-eth.max-position-percent:75.0}")
     private double maxPositionPercent;
 
     @Value("${trading.strategy.bb.tp-atr-multiplier:1.0}")

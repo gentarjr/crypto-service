@@ -378,7 +378,7 @@ trading:
 trading:
   strategy:
     bb:
-      sl-atr-multiplier: 0.8
+      sl-atr-multiplier: 0.8    # tight relative to fee+slippage; see live trade analysis
       tp-atr-multiplier: 1.5
 ```
 

@@ -3,10 +3,11 @@ package com.bot.testnet.crypto.controller;
 import com.bot.testnet.crypto.model.dto.LivePosition;
 import com.bot.testnet.crypto.model.entity.TradeHistory;
 import com.bot.testnet.crypto.repository.TradeHistoryRepository;
-import com.bot.testnet.crypto.service.trading.OrderExecutorService;
+import com.bot.testnet.crypto.service.trading.OrderExecutorServiceEth;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.data.domain.Page;
@@ -20,24 +21,25 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+
 @RestController
-@RequestMapping("/api/live")
+@RequestMapping("/api/live/eth")
+@ConditionalOnProperty(name = "trading.pair-eth.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Log4j2
-public class LiveTradingController {
+public class LiveTradingControllerEth {
 
-    private final OrderExecutorService orderExecutorService;
+    private final OrderExecutorServiceEth orderExecutorService;
     private final TradeHistoryRepository tradeHistoryRepository;
 
-    @Value("${trading.risk.max-consecutive-losses:10}")
+    @Value("${trading.risk-eth.max-consecutive-losses:10}")
     private int maxConsecutiveLosses;
 
     @GetMapping("/status")
     public Map<String, Object> status() {
         LivePosition pos = orderExecutorService.getOpenPosition();
 
-        // ✅ Pakai LinkedHashMap karena Map.of() tidak support null value
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         result.put("enabled", orderExecutorService.isEnabled());
         result.put("halted", orderExecutorService.isHalted());
         result.put("openPosition", pos != null ? pos : "none");
@@ -64,7 +66,7 @@ public class LiveTradingController {
 
         Pageable pageable = PageRequest.of(page, size);
         Page<TradeHistory> result = tradeHistoryRepository
-                .findByPairOrderByCloseTimeDesc("BNB", pageable);
+                .findByPairOrderByCloseTimeDesc("ETH", pageable);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("trades", result.getContent());
@@ -84,15 +86,15 @@ public class LiveTradingController {
                 .atStartOfDay(wib).toInstant();
 
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("totalTrades", tradeHistoryRepository.countTotalSinceByPair(startOfDay, "BNB"));
-        stats.put("wins", tradeHistoryRepository.countWinsSinceByPair(startOfDay, "BNB"));
-        stats.put("todayPnl", tradeHistoryRepository.sumPnlSinceByPair(startOfDay, "BNB"));
+        stats.put("totalTrades", tradeHistoryRepository.countTotalSinceByPair(startOfDay, "ETH"));
+        stats.put("wins", tradeHistoryRepository.countWinsSinceByPair(startOfDay, "ETH"));
+        stats.put("todayPnl", tradeHistoryRepository.sumPnlSinceByPair(startOfDay, "ETH"));
         return stats;
     }
 
     @DeleteMapping("/history/reset")
     public Map<String, String> resetHistory() {
-        tradeHistoryRepository.deleteByPair("BNB");
-        return Map.of("status", "OK", "message", "BNB trade history cleared");
+        tradeHistoryRepository.deleteByPair("ETH");
+        return Map.of("status", "OK", "message", "ETH trade history cleared");
     }
 }
