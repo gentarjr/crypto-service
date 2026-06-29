@@ -596,6 +596,17 @@ public class OrderExecutorService {
                             openPosition.getQuantity());
                 }
 
+                if (adjustedSL != null && currentPrice.compareTo(adjustedSL) <= 0) {
+                    log.error("🚨 Price already breached SL before OCO placement! " +
+                                    "currentPrice=${} adjustedSL=${} — ABORT, closing position immediately",
+                            currentPrice, adjustedSL);
+                    sendTg("🚨 [LIVE] SL Already Breached Pre-OCO",
+                            String.format("Entry: $%.4f\nCurrent: $%.4f\nSL would be: $%.4f\n" +
+                                            "Market bergerak terlalu cepat — posisi langsung di-close manual.",
+                                    actualEntry.doubleValue(), currentPrice.doubleValue(), adjustedSL.doubleValue()));
+                    return;
+                }
+
                 if (signal.getTakeProfit() != null && signal.getStopLoss() != null) {
                     try {
                         OcoOrderResponse ocoResult = binanceOcoService.placeOcoOrder(

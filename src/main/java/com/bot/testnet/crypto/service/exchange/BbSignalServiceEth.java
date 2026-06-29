@@ -3,6 +3,7 @@ package com.bot.testnet.crypto.service.exchange;
 import com.bot.testnet.crypto.model.dto.*;
 import com.bot.testnet.crypto.model.response.GetIndicatorResponse;
 import com.bot.testnet.crypto.service.indicator.CandlePatternHelper;
+import com.bot.testnet.crypto.service.indicator.MultiTimeframeServiceEth;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +27,8 @@ public class BbSignalServiceEth implements SignalService {
     private final BalanceServiceEth balanceService;
     private final SentimentServiceEth sentimentService;
     private final CandlePatternHelper candlePatternHelper;
+    private final MultiTimeframeServiceEth multiTimeframeService;
+    private final CandleService candleService;
 
     @Value("${trading.indicators.adx-ranging-threshold:20}")
     private double adxRangingThreshold;
@@ -90,6 +93,22 @@ public class BbSignalServiceEth implements SignalService {
                             snapshot.getAtrPercent().doubleValue())));
             return Signal.hold(StrategyType.BB_MEAN_REVERSION,
                     "Extreme volatility — circuit breaker", filters);
+        }
+
+        // M2.5 (MANDATORY BARU): 1H macro trend block — cegah band-walking
+        try {
+            String trend1h = multiTimeframeService.get1hTrend(candleService);
+            if ("BEARISH".equals(trend1h)) {
+                filters.add(SignalFilter.fail("MACRO_TREND_BLOCK",
+                        "1H trend BEARISH — BB BUY diblok, ini band-walking bukan ranging ❌"));
+                return Signal.hold(StrategyType.BB_MEAN_REVERSION,
+                        "1H macro trend bearish — block counter-trend entry", filters);
+            }
+            filters.add(SignalFilter.pass("MACRO_TREND_BLOCK",
+                    String.format("1H trend %s ✅", trend1h)));
+        } catch (Exception e) {
+            log.warn("⚠️ [BB-ETH] Macro trend check failed, fail-open: {}", e.getMessage());
+            filters.add(SignalFilter.pass("MACRO_TREND_BLOCK", "1H check unavailable — fail-open"));
         }
 
         List<Candle> candles = snapshot.getRecentCandles();
