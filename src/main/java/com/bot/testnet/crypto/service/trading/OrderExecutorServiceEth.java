@@ -608,6 +608,35 @@ public class OrderExecutorServiceEth {
                             openPosition.getQuantity());
                 }
 
+                if (adjustedSL != null && currentPrice.compareTo(adjustedSL) <= 0) {
+                    log.error("🚨 Price already breached SL before OCO placement! " +
+                                    "currentPrice=${} adjustedSL=${} — ABORT & SELL IMMEDIATELY",
+                            currentPrice, adjustedSL);
+                    try {
+                        BigDecimal sellAmt = openPosition.getQuantity();
+                        binanceSellService.placeMarketSellOrder(
+                                PostSellRequest.builder()
+                                        .base(baseCurrency)
+                                        .quote(quoteCurrency)
+                                        .amount(sellAmt)
+                                        .build());
+                        log.info("✅ Emergency sell executed: {} {}", sellAmt, baseCurrency);
+                        sendTg("🚨 [LIVE] SL Breached Pre-OCO — Auto-Closed",
+                                String.format("Entry: $%.4f\nCurrent: $%.4f\nSL would be: $%.4f\n" +
+                                                "Market terlalu cepat — posisi DIJUAL otomatis (market sell).",
+                                        actualEntry.doubleValue(), currentPrice.doubleValue(), adjustedSL.doubleValue()));
+                    } catch (Exception sellEx) {
+                        log.error("❌ Emergency sell FAILED: {}", sellEx.getMessage());
+                        sendTg("🚨🚨 CRITICAL — MANUAL CLOSE REQUIRED!",
+                                String.format("SL breach terdeteksi TAPI auto-sell GAGAL!\n" +
+                                                "Posisi %s %s MASIH OPEN tanpa proteksi!\n" +
+                                                "CLOSE MANUAL SEKARANG DI BINANCE!\nError: %s",
+                                        openPosition.getQuantity(), baseCurrency, sellEx.getMessage()));
+                    }
+                    openPosition = null;
+                    return;
+                }
+
                 if (signal.getTakeProfit() != null && signal.getStopLoss() != null) {
                     try {
                         OcoOrderResponse ocoResult = binanceOcoService.placeOcoOrder(
