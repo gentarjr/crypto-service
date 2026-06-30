@@ -3,7 +3,6 @@ package com.bot.testnet.crypto.service.risk;
 import com.bot.testnet.crypto.model.entity.EquityTrackingEntity;
 import com.bot.testnet.crypto.repository.EquityTrackingRepository;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
-import com.bot.testnet.crypto.service.exchange.BalanceService;
 import com.bot.testnet.crypto.service.exchange.BalanceServiceEth;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
