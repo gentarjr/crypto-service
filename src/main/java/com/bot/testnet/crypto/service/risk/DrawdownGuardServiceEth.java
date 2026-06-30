@@ -4,10 +4,12 @@ import com.bot.testnet.crypto.model.entity.EquityTrackingEntity;
 import com.bot.testnet.crypto.repository.EquityTrackingRepository;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
 import com.bot.testnet.crypto.service.exchange.BalanceService;
+import com.bot.testnet.crypto.service.exchange.BalanceServiceEth;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -16,6 +18,7 @@ import java.time.Instant;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Service
+@ConditionalOnProperty(name = "trading.pair-eth.enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Log4j2
 public class DrawdownGuardServiceEth {
@@ -24,9 +27,9 @@ public class DrawdownGuardServiceEth {
 
     private final EquityTrackingRepository repository;
     private final TelegramNotificationService telegramNotificationService;
-    private final BalanceService balanceService;
+    private final BalanceServiceEth balanceService;
 
-    @Value("${trading.risk.max-drawdown-percent:20.0}")
+    @Value("${trading.risk-eth.max-drawdown-percent:20.0}")
     private double maxDrawdownPercent;
 
     private final ReentrantLock lock = new ReentrantLock();
