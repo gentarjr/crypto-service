@@ -13,7 +13,6 @@ import com.bot.testnet.crypto.service.trading.OrderExecutorService;
 import com.bot.testnet.crypto.service.trading.PaperTradingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.knowm.xchange.binance.dto.marketdata.KlineInterval;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -43,7 +42,6 @@ public class CandleScheduler {
     private final BalanceService balanceService;
     private final BinanceService binanceService;
 
-    private String lastRegime = StringUtils.EMPTY;
     private int candleFetchErrorCount = 0;
     private static final int MAX_ERROR_BEFORE_ALERT = 3;
 
@@ -325,8 +323,6 @@ public class CandleScheduler {
             boolean isNew = adaptiveSignalService.isNewActionableSignal(signal);
             if (isNew) {
                 sendSignalNotification(signal);
-            } else {
-                sendHoldNotificationIfRegimeChanged(signal, snapshot);
             }
 
             BigDecimal currentPrice = snapshot.getCurrentPrice();
@@ -441,72 +437,6 @@ public class CandleScheduler {
                         .format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))));
 
         sendTg(title, msg.toString());
-    }
-
-    private void sendHoldNotificationIfRegimeChanged(Signal signal,
-                                                     GetIndicatorResponse snapshot) {
-        String currentRegime = snapshot.getMarketRegime();
-
-        // Skip kalau regime sama dengan sebelumnya
-        if (currentRegime.equals(lastRegime)) {
-            log.debug("Regime sama ({}), skip HOLD notif", currentRegime);
-            return;
-        }
-
-        // Regime berubah! Update dan kirim notif
-        log.info("📊 Regime changed: {} → {}", lastRegime, currentRegime);
-        lastRegime = currentRegime;
-
-        // Cari alasan HOLD (filter yang fail)
-        String holdReason = "No actionable signal";
-        if (signal.getFilters() != null && !signal.getFilters().isEmpty()) {
-            holdReason = signal.getFilters().stream()
-                    .filter(f -> !f.isPass())
-                    .map(f -> "[" + f.getFilterName() + "] " + f.getReason())
-                    .findFirst()
-                    .orElse(signal.getSummary() != null
-                            ? signal.getSummary() : "No reason");
-        } else if (signal.getSummary() != null) {
-            holdReason = signal.getSummary();
-        }
-
-        // Build Telegram message
-        StringBuilder msg = new StringBuilder();
-        msg.append(String.format("📊 Regime: <b>%s</b>\n", currentRegime));
-        msg.append(String.format("📈 Strategy: <b>%s</b>\n\n", signal.getStrategy()));
-        msg.append(String.format("❌ Hold Reason:\n%s\n\n", holdReason));
-
-        // Tambah indicator summary
-        msg.append("<b>Market Condition:</b>\n");
-        msg.append(String.format("💰 Price: $%.4f\n", snapshot.getCurrentPrice().doubleValue()));
-        msg.append(String.format("📊 ADX: %.2f [%s]\n",
-                snapshot.getAdx().doubleValue(),
-                currentRegime));
-        msg.append(String.format("📈 +DI: %.2f | -DI: %.2f\n",
-                snapshot.getPlusDI().doubleValue(),
-                snapshot.getMinusDI().doubleValue()));
-        msg.append(String.format("📉 RSI: %.2f [%s]\n",
-                snapshot.getRsi().doubleValue(),
-                snapshot.getRsiZone()));
-        msg.append(String.format("📦 Volume Ratio: %.2fx [%s]\n",
-                snapshot.getVolumeRatio().doubleValue(),
-                snapshot.getVolumeZone()));
-
-        // Filter results
-        if (signal.getFilters() != null && !signal.getFilters().isEmpty()) {
-            msg.append("\n<b>Filter Results:</b>\n");
-            signal.getFilters().forEach(f -> {
-                String icon = f.isPass() ? "✅" : "❌";
-                msg.append(String.format("%s %s\n", icon, f.getReason()));
-            });
-        }
-
-        msg.append(String.format("\n⏰ %s WIB",
-                java.time.LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
-                        .format(java.time.format.DateTimeFormatter
-                                .ofPattern("dd-MM-yyyy HH:mm:ss"))));
-
-        sendTg("⏸️ HOLD — Regime Changed", msg.toString());
     }
 
     private void sendTg(String title, String body) {
