@@ -69,9 +69,11 @@ public class DrawdownGuardService {
             }
 
             BigDecimal maxDrawdownPct = BigDecimal.valueOf(maxDrawdownPercent);
-            BigDecimal drawdownPct = entity.getPeakEquity().subtract(currentEquity)
+            BigDecimal drawdownPct = entity.getPeakEquity().compareTo(BigDecimal.ZERO) > 0
+                    ? entity.getPeakEquity().subtract(currentEquity)
                     .divide(entity.getPeakEquity(), 6, RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.valueOf(100));
+                    .multiply(BigDecimal.valueOf(100))
+                    : BigDecimal.ZERO;
 
             if (drawdownPct.compareTo(maxDrawdownPct) >= 0 && !entity.isDrawdownBreached()) {
                 entity.setDrawdownBreached(true);
