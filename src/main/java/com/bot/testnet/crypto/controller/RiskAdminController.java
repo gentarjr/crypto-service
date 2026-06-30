@@ -17,7 +17,7 @@ import java.util.Map;
 public class RiskAdminController {
 
     // Hasil dari: echo -n "password_lo" | sha256sum — ganti dengan hash punya lo
-    private static final String SECRET_HASH = "316ac493977492520294f48aa05b0f559e6bd692d75ba0b62b3deef5e7b59c45";
+    private static final String SECRET_HASH = "4bed4b55e2839d5d819b4821603f83e79585f2b41dc441bf9b6c8d900123a8c6";
 
     private final DrawdownGuardService drawdownGuardService;
     private final DrawdownGuardServiceEth drawdownGuardServiceEth;
