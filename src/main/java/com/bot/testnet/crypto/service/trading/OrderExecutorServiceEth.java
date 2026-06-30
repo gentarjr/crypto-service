@@ -13,6 +13,7 @@ import com.bot.testnet.crypto.model.response.OcoOrderResponse;
 import com.bot.testnet.crypto.repository.TradeHistoryRepository;
 import com.bot.testnet.crypto.service.TelegramNotificationService;
 import com.bot.testnet.crypto.service.exchange.*;
+import com.bot.testnet.crypto.service.risk.DrawdownGuardServiceEth;
 import com.bot.testnet.crypto.service.risk.TrailingStopHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -52,6 +53,7 @@ public class OrderExecutorServiceEth {
     private final BalanceServiceEth balanceService;
     private final BinanceOcoService binanceOcoService;
     private final TradeHistoryRepository tradeHistoryRepository;
+    private final DrawdownGuardServiceEth drawdownGuardServiceEth;
 
     @Value("${trading.live-eth.enabled:false}")
     private boolean liveEnabled;
@@ -171,6 +173,11 @@ public class OrderExecutorServiceEth {
         // Safety checks
         if (dailyHalted) {
             log.info("🛑 Live trading HALTED today");
+            return;
+        }
+
+        if (drawdownGuardServiceEth.isBreached()) {
+            log.warn("🛑 [LIVE-ETH] DRAWDOWN BREACH active — skip new entry, manage existing position only");
             return;
         }
 
@@ -1283,6 +1290,10 @@ public class OrderExecutorServiceEth {
         position.setStatus("CLOSED");
 
         dailyPnl = dailyPnl.add(pnlAfterFee);
+        balanceService.getTotalCapitalSafe().ifPresentOrElse(
+                drawdownGuardServiceEth::updateEquity,
+                () -> log.warn("⚠️ ETH Skip drawdown equity update — total capital fetch failed")
+        );
         consecutiveLosses = isWin ? 0 : consecutiveLosses + 1;
         lastCloseTime = ZonedDateTime.now(
                 ZoneId.of("Asia/Jakarta")).toInstant();

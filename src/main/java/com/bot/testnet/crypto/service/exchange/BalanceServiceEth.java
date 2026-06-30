@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 
 @Service
@@ -116,6 +117,35 @@ public class BalanceServiceEth {
             log.error("❌ [ETH] Cannot fetch total capital, using fallback: ${} | Error: {}",
                     fallbackModal, e.getMessage());
             return BigDecimal.valueOf(fallbackModal);
+        }
+    }
+
+    public Optional<BigDecimal> getTotalCapitalSafe() {
+        try {
+            BigDecimal usdcTotal = binanceService
+                    .getBalance(GetBalanceCurrencyRequest.builder().currency(quoteCurrency).build())
+                    .getTotal();
+            if (usdcTotal == null) usdcTotal = BigDecimal.ZERO;
+
+            BigDecimal ethTotal = BigDecimal.ZERO;
+            try {
+                ethTotal = binanceService.getBalance(GetBalanceCurrencyRequest.builder().currency(baseCurrency).build()).getTotal();
+                if (ethTotal == null) ethTotal = BigDecimal.ZERO;
+            } catch (Exception e) {
+                log.warn("[ETH] Cannot fetch ETH balance, treating as 0: {}", e.getMessage());
+            }
+
+            BigDecimal ethValueInUsdc = BigDecimal.ZERO;
+            if (ethTotal.compareTo(new BigDecimal("0.0001")) > 0) {
+                BigDecimal ethPrice = binanceService.getCurrentPrice(
+                        GetCurrentPriceRequest.builder().base(baseCurrency).quote(quoteCurrency).build()).getPrice();
+                ethValueInUsdc = ethTotal.multiply(ethPrice);
+            }
+
+            return java.util.Optional.of(usdcTotal.add(ethValueInUsdc));
+        } catch (Exception e) {
+            log.error("❌ [ETH] Cannot fetch total capital for equity tracking: {}", e.getMessage());
+            return java.util.Optional.empty();
         }
     }
 

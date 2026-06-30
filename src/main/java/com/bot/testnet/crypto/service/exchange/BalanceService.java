@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 /**
  * Service untuk get balance real dari Binance
@@ -122,6 +123,35 @@ public class BalanceService {
             log.error("❌ Cannot fetch total capital, using fallback: ${} | Error: {}",
                     fallbackModal, e.getMessage());
             return BigDecimal.valueOf(fallbackModal);
+        }
+    }
+
+    public Optional<BigDecimal> getTotalCapitalSafe() {
+        try {
+            BigDecimal usdtTotal = binanceService
+                    .getBalance(GetBalanceCurrencyRequest.builder().currency(quoteCurrency).build())
+                    .getTotal();
+            if (usdtTotal == null) usdtTotal = BigDecimal.ZERO;
+
+            BigDecimal bnbTotal = BigDecimal.ZERO;
+            try {
+                bnbTotal = binanceService.getBalance(GetBalanceCurrencyRequest.builder().currency(baseCurrency).build()).getTotal();
+                if (bnbTotal == null) bnbTotal = BigDecimal.ZERO;
+            } catch (Exception e) {
+                log.warn("Cannot fetch BNB balance, treating as 0: {}", e.getMessage());
+            }
+
+            BigDecimal bnbValueInUsdt = BigDecimal.ZERO;
+            if (bnbTotal.compareTo(new BigDecimal("0.0001")) > 0) {
+                BigDecimal bnbPrice = binanceService.getCurrentPrice(
+                        GetCurrentPriceRequest.builder().base(baseCurrency).quote(quoteCurrency).build()).getPrice();
+                bnbValueInUsdt = bnbTotal.multiply(bnbPrice);
+            }
+
+            return java.util.Optional.of(usdtTotal.add(bnbValueInUsdt));
+        } catch (Exception e) {
+            log.error("❌ Cannot fetch total capital for equity tracking: {}", e.getMessage());
+            return java.util.Optional.empty();
         }
     }
 

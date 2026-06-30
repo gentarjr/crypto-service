@@ -74,6 +74,7 @@ trading:
     timeout-hours: 2
     qty-decimal-places: 4
     min-quantity: 0.003
+    max-drawdown-percent: 20.0
   websocket-eth:
     base-url: wss://stream.binance.com/ws
     reconnect-delay-seconds: 5
@@ -161,6 +162,7 @@ trading:
     max-slippage-percent: 0.8     # dari 0.3
     partial-tp-enabled: false
     partial-tp-ratio: 0.5
+    max-drawdown-percent: 20.0
 
   sentiment:
     enabled: true
