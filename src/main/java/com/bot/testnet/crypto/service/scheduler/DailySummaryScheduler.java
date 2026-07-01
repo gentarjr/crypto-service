@@ -6,6 +6,7 @@ import com.bot.testnet.crypto.service.exchange.BalanceService;
 import com.bot.testnet.crypto.service.exchange.BalanceServiceEth;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -26,7 +27,7 @@ public class DailySummaryScheduler {
     private final TelegramNotificationService telegramService;
     private final TradeHistoryRepository tradeHistoryRepository;
     private final BalanceService balanceService;
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @Autowired(required = false)
     private BalanceServiceEth balanceServiceEth;
 
     // ── 13.00 WIB — Bot mulai, greeting ───────────────────────────
