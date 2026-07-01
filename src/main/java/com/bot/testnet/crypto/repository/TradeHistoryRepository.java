@@ -39,6 +39,21 @@ public interface TradeHistoryRepository extends JpaRepository<TradeHistory, Stri
     @Query("SELECT COUNT(t) FROM TradeHistory t WHERE t.closeTime >= :since AND COALESCE(t.pair, 'BNB') = :pair")
     long countTotalSinceByPair(Instant since, String pair);
 
+    @Query("SELECT COUNT(t) FROM TradeHistory t WHERE t.closeTime >= :since AND COALESCE(t.pair, 'BNB') = :pair AND t.closeReason IN ('STOP_LOSS', 'TRAILING_STOP')")
+    long countSlSinceByPair(Instant since, String pair);
+
+    @Query("SELECT COUNT(t) FROM TradeHistory t WHERE t.closeTime >= :since AND COALESCE(t.pair, 'BNB') = :pair AND t.closeReason = 'TAKE_PROFIT'")
+    long countTpSinceByPair(Instant since, String pair);
+
+    @Query("SELECT SUM(t.pnlAfterFee) FROM TradeHistory t WHERE t.closeTime >= :since AND COALESCE(t.pair, 'BNB') = :pair AND t.pnlAfterFee > 0")
+    BigDecimal sumWinPnlSinceByPair(Instant since, String pair);
+
+    @Query("SELECT SUM(t.pnlAfterFee) FROM TradeHistory t WHERE t.closeTime >= :since AND COALESCE(t.pair, 'BNB') = :pair AND t.pnlAfterFee < 0")
+    BigDecimal sumLossPnlSinceByPair(Instant since, String pair);
+
+    @Query("SELECT AVG(t.durationMinutes) FROM TradeHistory t WHERE t.closeTime >= :since AND COALESCE(t.pair, 'BNB') = :pair")
+    Double avgDurationSinceByPair(Instant since, String pair);
+
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     @Query("DELETE FROM TradeHistory t WHERE COALESCE(t.pair, 'BNB') = :pair")

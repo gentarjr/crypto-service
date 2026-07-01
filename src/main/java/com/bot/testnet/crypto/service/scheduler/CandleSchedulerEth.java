@@ -210,40 +210,6 @@ public class CandleSchedulerEth {
         }
     }
 
-    @Scheduled(cron = "0 0 8 * * *", zone = "Asia/Jakarta")
-    public void sendMorningHealthCheck() {
-        try {
-            BigDecimal balance = balanceService.getAvailableCapital();
-            boolean liveHalted = orderExecutorService.isHalted();
-            String status = liveHalted ? "⚠️ HALTED" : "✅ Running";
-
-            int yesterdayTrades = orderExecutorService.getClosedCount();
-            BigDecimal yesterdayPnl = orderExecutorService.getDailyPnl();
-
-            sendTg(
-                    "☀️ Morning Health Check",
-                    String.format(
-                            "Status: <b>%s</b>\n" +
-                                    "💰 Balance: <b>$%.2f</b>\n\n" +
-                                    "Yesterday (Live):\n" +
-                                    "   Trades: %d\n" +
-                                    "   P&L: <b>$%.4f</b>\n\n" +
-                                    "Bot siap trading hari ini!\n" +
-                                    "⏰ %s WIB",
-                            status,
-                            balance.doubleValue(),
-                            yesterdayTrades,
-                            yesterdayPnl.doubleValue(),
-                            formatTime()));
-
-        } catch (Exception e) {
-            sendTg(
-                    "❌ Health Check Error",
-                    "Gagal kirim morning report!\n" +
-                            "Error: " + e.getMessage());
-        }
-    }
-
     /**
      * Trigger event: candle baru tutup
      * Nanti di sini kita panggil indikator & signal generator

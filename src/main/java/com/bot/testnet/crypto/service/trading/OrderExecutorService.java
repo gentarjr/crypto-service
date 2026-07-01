@@ -1203,31 +1203,32 @@ public class OrderExecutorService {
 
     private void sendLivePositionOpenedNotif(LivePosition position, String ocoStatus) {
         String strategy = position.getStrategy() == StrategyType.EMA_CROSSOVER
-                ? "EMA_CROSSOVER"
-                : "BB_MEAN_REVERSION";
+                ? "EMA_CROSSOVER" : "BB_MEAN_REVERSION";
+        String ocoLine = "SUCCESS".equals(ocoStatus)
+                ? "🛡️ OCO Active" : "⚠️ OCO tidak aktif — monitor manual!";
 
         sendTg(
-                "🟢 [LIVE] Position Opened",
+                "🟢 [BNB/USDT] BELI",
                 String.format(
-                        "🆔 #%s | %s\n\n" +
-                                "💰 Entry: <b>$%.4f</b>\n" +
-                                "🛑 SL: <b>$%.4f</b>\n" +
-                                "🎯 TP: <b>%s</b>\n\n" +
+                        "🆔 #%s | <b>%s</b>\n\n" +
+                                "💰 Entry    : <b>$%.4f</b>\n" +
+                                "📦 Quantity : <b>%.4f BNB</b>\n" +
+                                "💵 Nilai    : <b>$%.2f</b>\n\n" +
+                                "🛑 SL       : <b>$%.4f</b>\n" +
+                                "🎯 TP       : <b>%s</b>\n\n" +
                                 "%s\n" +
                                 "⏰ %s WIB",
-                        position.getId(),
-                        strategy,
+                        position.getId(), strategy,
                         position.getEntryPrice().doubleValue(),
+                        position.getQuantity().doubleValue(),
+                        position.getPositionValue() != null
+                                ? position.getPositionValue().doubleValue() : 0.0,
                         position.getStopLoss().doubleValue(),
                         position.getTakeProfit() != null
                                 ? String.format("$%.4f", position.getTakeProfit().doubleValue())
                                 : "TRAILING SL",
-                        "SUCCESS".equals(ocoStatus)
-                                ? "🛡️ OCO Active — aman meski bot restart!"
-                                : "⚠️ OCO tidak aktif — monitor manual!",
-                        formatTime()
-                )
-        );
+                        ocoLine,
+                        formatTime()));
     }
 
     private void updateCloseStats(LivePosition position,
@@ -1336,7 +1337,8 @@ public class OrderExecutorService {
     // SESUDAH:
     private void sendLivePositionClosedNotif(LivePosition position) {
         boolean isWin = position.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0;
-        String emoji  = isWin ? "✅" : "❌";
+        String emoji = isWin ? "✅" : "❌";
+        String sign  = isWin ? "+" : "";
 
         BigDecimal modalBd = balanceService.getTotalCapital();
         BigDecimal dailyPct = modalBd.compareTo(BigDecimal.ZERO) > 0
@@ -1345,26 +1347,36 @@ public class OrderExecutorService {
                 : BigDecimal.ZERO;
         String dailySign = dailyPct.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "";
 
+        long durMin = (position.getOpenTime() != null && position.getCloseTime() != null)
+                ? java.time.Duration.between(position.getOpenTime(), position.getCloseTime()).toMinutes()
+                : 0;
+        String durStr = durMin >= 60
+                ? String.format("%dj %dm", durMin / 60, durMin % 60)
+                : durMin + " menit";
+
         sendTg(
-                emoji + " [LIVE] " + position.getCloseReason(),
+                emoji + " [BNB/USDT] " + position.getCloseReason(),
                 String.format(
-                        "🆔 #%s | %s\n\n" +
-                                "💰 Entry:  <b>$%.4f</b>\n" +
-                                "💰 Exit:   <b>$%.4f</b>\n\n" +
-                                "📊 Net P&L:  <b>%s%.2f%%</b>\n\n" +
-                                "📈 Today P&L: <b>%s%.2f%%</b>\n" +
-                                "🔁 Consec losses: <b>%d</b>\n\n" +
+                        "🆔 #%s | <b>%s</b>\n\n" +
+                                "💰 Entry    : <b>$%.4f</b>\n" +
+                                "💰 Exit     : <b>$%.4f</b>\n" +
+                                "📦 Qty      : <b>%.4f BNB</b>\n\n" +
+                                "📊 P&L      : <b>%s$%.4f</b> (%s%.2f%%)\n" +
+                                "💸 Fee      : <b>$%.4f</b>\n" +
+                                "⏱ Durasi   : <b>%s</b>\n\n" +
+                                "📈 Sesi P&L : <b>%s%.2f%%</b>\n" +
+                                "🔁 Consec loss: <b>%d</b>\n\n" +
                                 "⏰ %s WIB",
-                        position.getId(),
-                        position.getStrategy(),
+                        position.getId(), position.getStrategy(),
                         position.getEntryPrice().doubleValue(),
                         position.getClosePrice().doubleValue(),
-                        position.getPnlPercent() != null
-                                && position.getPnlPercent().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "",
-                        position.getPnlPercent() != null
-                                ? position.getPnlPercent().doubleValue() : 0.0,
-                        dailySign,
-                        dailyPct.doubleValue(),
+                        position.getQuantity().doubleValue(),
+                        sign, position.getRealizedPnl().doubleValue(),
+                        sign,
+                        position.getPnlPercent() != null ? position.getPnlPercent().doubleValue() : 0.0,
+                        position.getFee() != null ? position.getFee().doubleValue() : 0.0,
+                        durStr,
+                        dailySign, dailyPct.doubleValue(),
                         consecutiveLosses,
                         formatTime()));
     }
