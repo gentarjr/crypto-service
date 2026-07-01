@@ -1347,7 +1347,6 @@ public class OrderExecutorServiceEth {
         }
     }
 
-    // SESUDAH:
     private void sendLivePositionClosedNotif(LivePosition position) {
         boolean isWin = position.getRealizedPnl().compareTo(BigDecimal.ZERO) > 0;
         String emoji = isWin ? "✅" : "❌";
