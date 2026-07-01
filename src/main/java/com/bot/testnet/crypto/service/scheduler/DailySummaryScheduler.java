@@ -26,7 +26,8 @@ public class DailySummaryScheduler {
     private final TelegramNotificationService telegramService;
     private final TradeHistoryRepository tradeHistoryRepository;
     private final BalanceService balanceService;
-    private final BalanceServiceEth balanceServiceEth;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private BalanceServiceEth balanceServiceEth;
 
     // ── 13.00 WIB — Bot mulai, greeting ───────────────────────────
     @Scheduled(cron = "0 0 13 * * *", zone = "Asia/Jakarta")
@@ -34,7 +35,9 @@ public class DailySummaryScheduler {
         log.info("☀️ Sending morning greeting...");
         try {
             BigDecimal bnbBalance = balanceService.getTotalCapitalSafe().orElse(BigDecimal.ZERO);
-            BigDecimal ethBalance = balanceServiceEth.getTotalCapitalSafe().orElse(BigDecimal.ZERO);
+            BigDecimal ethBalance = balanceServiceEth != null
+                    ? balanceServiceEth.getTotalCapitalSafe().orElse(BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
             BigDecimal totalBalance = bnbBalance.add(ethBalance);
 
             String date = LocalDateTime.now(ZoneId.of("Asia/Jakarta"))
