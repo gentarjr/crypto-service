@@ -95,4 +95,52 @@ public class LiveTradingController {
         tradeHistoryRepository.deleteByPair("BNB");
         return Map.of("status", "OK", "message", "BNB trade history cleared");
     }
+
+    @GetMapping("/analytics")
+    public Map<String, Object> getAnalytics() {
+        String pair = "BNB";
+        Instant epoch = Instant.EPOCH; // all-time, bukan cuma hari ini
+
+        long total    = tradeHistoryRepository.countTotalSinceByPair(epoch, pair);
+        long wins     = tradeHistoryRepository.countWinsSinceByPair(epoch, pair);
+        long sl       = tradeHistoryRepository.countSlSinceByPair(epoch, pair);
+        long tp       = tradeHistoryRepository.countTpSinceByPair(epoch, pair);
+        long losses   = total - wins;
+
+        java.math.BigDecimal totalPnl  = nvl(tradeHistoryRepository.sumPnlSinceByPair(epoch, pair));
+        java.math.BigDecimal winPnl    = nvl(tradeHistoryRepository.sumWinPnlSinceByPair(epoch, pair));
+        java.math.BigDecimal lossPnl   = nvl(tradeHistoryRepository.sumLossPnlSinceByPair(epoch, pair));
+        Double avgDur = tradeHistoryRepository.avgDurationSinceByPair(epoch, pair);
+
+        double wr      = total > 0 ? (double) wins / total : 0;
+        double avgWin  = wins > 0 ? winPnl.doubleValue() / wins : 0;
+        double avgLoss = losses > 0 ? Math.abs(lossPnl.doubleValue()) / losses : 0;
+        double pf      = avgLoss > 0 ? winPnl.doubleValue() / Math.abs(lossPnl.doubleValue()) : 0;
+        double rr      = avgLoss > 0 ? avgWin / avgLoss : 0;
+        double exp     = (wr * avgWin) - ((1 - wr) * avgLoss);
+
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("pair", pair);
+        r.put("totalTrades", total);
+        r.put("wins", wins);
+        r.put("losses", losses);
+        r.put("winRate", wr);
+        r.put("totalPnl", totalPnl);
+        r.put("winPnl", winPnl);
+        r.put("lossPnl", lossPnl);
+        r.put("avgWin", avgWin);
+        r.put("avgLoss", avgLoss);
+        r.put("profitFactor", pf);
+        r.put("riskRewardRatio", rr);
+        r.put("expectancy", exp);
+        r.put("avgDurationMinutes", avgDur != null ? avgDur : 0);
+        r.put("tpCount", tp);
+        r.put("slCount", sl);
+        r.put("otherCount", total - tp - sl);
+        return r;
+    }
+
+    private java.math.BigDecimal nvl(java.math.BigDecimal v) {
+        return v != null ? v : java.math.BigDecimal.ZERO;
+    }
 }
