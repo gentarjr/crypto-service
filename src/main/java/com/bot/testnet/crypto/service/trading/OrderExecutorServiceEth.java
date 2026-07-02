@@ -27,6 +27,7 @@ import java.time.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -125,16 +126,16 @@ public class OrderExecutorServiceEth {
 
     private LocalDate lastResetDate;
     private volatile LivePosition openPosition;
-    private final List<LivePosition> closedPositions = new ArrayList<>();
+    private final List<LivePosition> closedPositions = new CopyOnWriteArrayList<>();
     private final ReentrantLock positionLock = new ReentrantLock();
 
-    private BigDecimal dailyPnl = BigDecimal.ZERO;
-    private int consecutiveLosses = 0;
-    private boolean dailyHalted = false;
-    private Instant lastCloseTime = null;
-    private StrategyType lastCloseStrategy = null;
+    private volatile BigDecimal dailyPnl = BigDecimal.ZERO;
+    private volatile int consecutiveLosses = 0;
+    private volatile boolean dailyHalted = false;
+    private volatile Instant lastCloseTime = null;
+    private volatile StrategyType lastCloseStrategy = null;
+    private volatile boolean lastCloseWasLoss = false;
     private volatile GetIndicatorResponse lastSnapshot = null;
-    private boolean lastCloseWasLoss = false;
 
 
     private boolean isWithinTradingHours() {
@@ -226,7 +227,7 @@ public class OrderExecutorServiceEth {
      * Get closed positions
      */
     public List<LivePosition> getClosedPositions() {
-        return new ArrayList<>(closedPositions);
+        return closedPositions;
     }
 
     /**
@@ -1290,14 +1291,11 @@ public class OrderExecutorServiceEth {
                 ZoneId.of("Asia/Jakarta")).toInstant());
         position.setStatus("CLOSED");
 
-        dailyPnl = dailyPnl.add(pnlAfterFee);
-        balanceService.getTotalCapitalSafe().ifPresentOrElse(
-                drawdownGuardServiceEth::updateEquity,
-                () -> log.warn("⚠️ ETH Skip drawdown equity update — total capital fetch failed")
-        );
-        consecutiveLosses = isWin ? 0 : consecutiveLosses + 1;
-        lastCloseTime = ZonedDateTime.now(
-                ZoneId.of("Asia/Jakarta")).toInstant();
+        synchronized (this) {
+            dailyPnl = dailyPnl.add(pnlAfterFee);
+            consecutiveLosses = isWin ? 0 : consecutiveLosses + 1;
+        }
+        lastCloseTime = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
         lastCloseWasLoss = !isWin;
         lastCloseStrategy = position.getStrategy();
         closedPositions.add(position);
