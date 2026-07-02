@@ -1294,10 +1294,10 @@ public class OrderExecutorServiceEth {
         synchronized (this) {
             dailyPnl = dailyPnl.add(pnlAfterFee);
             consecutiveLosses = isWin ? 0 : consecutiveLosses + 1;
+            lastCloseTime = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
+            lastCloseWasLoss = !isWin;
+            lastCloseStrategy = position.getStrategy();
         }
-        lastCloseTime = ZonedDateTime.now(ZoneId.of("Asia/Jakarta")).toInstant();
-        lastCloseWasLoss = !isWin;
-        lastCloseStrategy = position.getStrategy();
         closedPositions.add(position);
 
         log.info("✅ [LIVE] Position CLOSED #{}: {} | net=${} ({}%)" +
