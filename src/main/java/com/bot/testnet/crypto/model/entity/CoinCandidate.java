@@ -42,6 +42,21 @@ public class CoinCandidate {
     @Column(name = "rank_position")
     private Integer rankPosition; // 1-10
 
+    @Column(name = "verdict", length = 30)
+    private String verdict; // EMA_BULLISH / BB_OVERSOLD_BOUNCE / NO_CLEAR_SIGNAL / INSUFFICIENT_DATA, null kalau bukan top3
+
+    @Column(name = "verdict_reason", length = 255)
+    private String verdictReason;
+
+    @Column(name = "suggested_entry", precision = 18, scale = 8)
+    private BigDecimal suggestedEntry;
+
+    @Column(name = "suggested_sl", precision = 18, scale = 8)
+    private BigDecimal suggestedSl;
+
+    @Column(name = "suggested_tp", precision = 18, scale = 8)
+    private BigDecimal suggestedTp;
+
     @Column(name = "generated_at")
     private Instant generatedAt;
 }

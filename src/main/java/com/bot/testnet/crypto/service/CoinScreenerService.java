@@ -30,6 +30,8 @@ public class CoinScreenerService {
     private final RestClient binancePublicRestClient;
 
     private final TelegramNotificationService telegramNotificationService;
+    private final ScreenerValidationService screenerValidationService;
+    private final ScreenerStrategyService screenerStrategyService;
 
     private static final Set<String> EXCLUDED_QUOTE_NOISE = Set.of(
             "USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "DAIUSDT" // stablecoin vs stablecoin, tidak relevan
@@ -66,10 +68,15 @@ public class CoinScreenerService {
                 top10.get(i).setRankPosition(i + 1);
             }
 
+            List<CoinCandidate> top3 = top10.stream().limit(3).collect(Collectors.toList());
+            screenerStrategyService.enrichWithVerdict(top3);
+
             persistTopCandidates(top10);
             log.info("Screener: {} kandidat baru disimpan", top10.size());
 
             sendTelegramAlert(top10);
+
+            screenerValidationService.logNewPicks(top3);
 
         } catch (Exception e) {
             // Sengaja ditelan di level ini (bukan dibiarkan propagate ke scheduler)
