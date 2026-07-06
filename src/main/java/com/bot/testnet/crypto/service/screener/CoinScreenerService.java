@@ -34,7 +34,9 @@ public class CoinScreenerService {
     private final ScreenerStrategyService screenerStrategyService;
 
     private static final Set<String> EXCLUDED_QUOTE_NOISE = Set.of(
-            "USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "DAIUSDT" // stablecoin vs stablecoin, tidak relevan
+            "USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "DAIUSDT", // stablecoin vs stablecoin, tidak relevan
+            "BTCUSDT", // benchmark relative-strength, skornya selalu 0 by construction — bukan kandidat
+            "BNBUSDT", "ETHUSDT" // sudah jadi pair live trading kamu, percuma di-screen ulang
     );
 
     private static final BigDecimal MIN_QUOTE_VOLUME_24H = new BigDecimal("5000000"); // filter kasar: minimal $5jt volume 24h, buang coin illiquid
