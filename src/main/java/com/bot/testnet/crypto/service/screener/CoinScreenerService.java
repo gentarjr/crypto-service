@@ -75,19 +75,21 @@ public class CoinScreenerService {
                 top10.get(i).setRankPosition(i + 1);
             }
 
-            List<CoinCandidate> top3 = top10.stream().limit(3).collect(Collectors.toList());
-            screenerStrategyService.enrichWithVerdict(top3);
+            // Dulu cuma top3 yang dievaluasi verdict — coin rank 4-10 permanen
+            // gak pernah dapet second opinion teknikal. Sekarang semua top10
+            // dievaluasi, cost REST call masih murah (10 klines call/jam).
+            screenerStrategyService.enrichWithVerdict(top10);
 
             persistTopCandidates(top10);
             log.info("Screener: {} kandidat baru disimpan", top10.size());
 
-            List<CoinCandidate> newlyLogged = screenerValidationService.logNewPicks(top3);
+            List<CoinCandidate> newlyLogged = screenerValidationService.logNewPicks(top10);
 
             List<CoinCandidate> newlyKuat = newlyLogged.stream()
                     .filter(c -> "KUAT".equals(c.getVerdict()))
                     .collect(Collectors.toList());
             if (!newlyKuat.isEmpty()) {
-                sendTelegramAlert(newlyKuat);
+                sendTelegramAlert(newlyKuat); // 1 pesan aja, isi list semua yang KUAT (bisa lebih dari 3)
             }
 
         } catch (Exception e) {
