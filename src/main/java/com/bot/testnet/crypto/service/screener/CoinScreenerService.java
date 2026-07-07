@@ -151,11 +151,6 @@ public class CoinScreenerService {
                 .build();
     }
 
-    /**
-     * Kirim notif Telegram untuk top 5 saja (dashboard tetap tampilkan 10).
-     * Kegagalan kirim Telegram TIDAK BOLEH gagalkan cycle screening —
-     * data tetap tersimpan ke DB walau Telegram down/rate-limited.
-     */
     private BigDecimal safeParse(String value) {
         if (value == null || value.isBlank()) return null;
         try {
