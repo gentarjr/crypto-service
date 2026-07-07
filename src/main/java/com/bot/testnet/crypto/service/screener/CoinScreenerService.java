@@ -79,8 +79,6 @@ public class CoinScreenerService {
             persistTopCandidates(top10);
             log.info("Screener: {} kandidat baru disimpan", top10.size());
 
-            sendTelegramAlert(top10);
-
             screenerValidationService.logNewPicks(top3);
 
         } catch (Exception e) {
@@ -158,27 +156,6 @@ public class CoinScreenerService {
      * Kegagalan kirim Telegram TIDAK BOLEH gagalkan cycle screening —
      * data tetap tersimpan ke DB walau Telegram down/rate-limited.
      */
-    private void sendTelegramAlert(List<CoinCandidate> top10) {
-        try {
-            List<CoinCandidate> top5 = top10.stream().limit(5).collect(Collectors.toList());
-
-            StringBuilder message = new StringBuilder();
-            for (CoinCandidate c : top5) {
-                message.append(String.format(
-                        "%d. <b>%s</b>  |  Score: %s  |  24h: %s%%  |  Harga: %s\n",
-                        c.getRankPosition(),
-                        c.getSymbol(),
-                        c.getScore().setScale(2, RoundingMode.HALF_UP),
-                        c.getPriceChangePercent4h().setScale(2, RoundingMode.HALF_UP),
-                        c.getLastPrice().toPlainString()
-                ));
-            }
-        } catch (Exception e) {
-            // Jangan biarkan kegagalan notif Telegram membatalkan hasil screening yang sudah tersimpan.
-            log.error("Gagal kirim notif Telegram untuk screener, data tetap tersimpan di DB", e);
-        }
-    }
-
     private BigDecimal safeParse(String value) {
         if (value == null || value.isBlank()) return null;
         try {
