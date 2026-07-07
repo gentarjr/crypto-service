@@ -85,7 +85,8 @@ public class ScreenerStrategyService {
     private static final String KLINE_INTERVAL_BINANCE = "4h"; // format param Binance API
     private static final String KLINE_INTERVAL_INTERNAL = "h4"; // format token BarSeriesConverter
     private static final int KLINE_LIMIT = 200; // 200 x 4h candle = ~33 hari histori, cukup warmup EMA21/BB20/ATR14
-    private static final int MIN_BARS_REQUIRED = 60;
+    private static final int MIN_BARS_REQUIRED = 30; // cukup buat EMA/RSI/BB, TIDAK cukup buat ADX matang
+    private static final int MIN_BARS_FOR_ADX = 60; // ADX butuh ~2x periode buat stabil, di bawah ini di-skip (bukan blok verdict total)
 
     /**
      * Mutate in-place: isi field verdict/suggestedEntry/Sl/Tp pada tiap
@@ -126,9 +127,15 @@ public class ScreenerStrategyService {
         StandardDeviationIndicator stdDev = new StandardDeviationIndicator(closePrice, bbPeriod);
         BollingerBandsLowerIndicator bbLower = new BollingerBandsLowerIndicator(bbMiddle, stdDev, series.numOf(bbStdDev));
 
-        ADXIndicator adx = new ADXIndicator(series, adxPeriod, adxPeriod);
-        PlusDIIndicator plusDI = new PlusDIIndicator(series, adxPeriod);
-        MinusDIIndicator minusDI = new MinusDIIndicator(series, adxPeriod);
+        ADXIndicator adx = null;
+        PlusDIIndicator plusDI = null;
+        MinusDIIndicator minusDI = null;
+        boolean adxDataSufficient = candles.size() >= MIN_BARS_FOR_ADX;
+        if (adxDataSufficient) {
+            adx = new ADXIndicator(series, adxPeriod, adxPeriod);
+            plusDI = new PlusDIIndicator(series, adxPeriod);
+            minusDI = new MinusDIIndicator(series, adxPeriod);
+        }
 
         double closeVal = closePrice.getValue(lastIndex).doubleValue();
         double emaFastVal = emaFast.getValue(lastIndex).doubleValue();
@@ -136,9 +143,9 @@ public class ScreenerStrategyService {
         double rsiVal = rsi.getValue(lastIndex).doubleValue();
         double atrVal = atr.getValue(lastIndex).doubleValue();
         double bbLowerVal = bbLower.getValue(lastIndex).doubleValue();
-        double adxVal = adx.getValue(lastIndex).doubleValue();
-        double plusDIVal = plusDI.getValue(lastIndex).doubleValue();
-        double minusDIVal = minusDI.getValue(lastIndex).doubleValue();
+        double adxVal = adxDataSufficient ? adx.getValue(lastIndex).doubleValue() : 0;
+        double plusDIVal = adxDataSufficient ? plusDI.getValue(lastIndex).doubleValue() : 0;
+        double minusDIVal = adxDataSufficient ? minusDI.getValue(lastIndex).doubleValue() : 0;
 
         // Sistem skor poin (bukan AND-gate) — 1 kriteria lemah gak langsung
         // diskualifikasi total kalau kriteria lain kuat. Bobot di bawah TEBAKAN
@@ -164,10 +171,16 @@ public class ScreenerStrategyService {
             reasons.add("BB oversold-bounce(+2)");
         }
 
-        // ADX cuma dikasih poin kalau TRENDING (>=25) DAN arahnya (+DI vs -DI)
-        // konfirmasi arah EMA bullish di atas — bukan berdiri sendiri, biar
-        // gak kasih poin ke "trending kuat tapi arahnya turun".
-        boolean adxConfirmsBullish = adxVal >= ADX_TREND_THRESHOLD && plusDIVal > minusDIVal && emaBullish;
+        // ADX cuma dikasih poin kalau data cukup matang (>=60 candle) DAN
+        // TRENDING (>=25) DAN arahnya (+DI vs -DI) konfirmasi arah EMA bullish
+        // di atas — bukan berdiri sendiri, biar gak kasih poin ke "trending
+        // kuat tapi arahnya turun". Coin dengan data <60 candle gak akan
+        // pernah dapet poin ADX — ceiling skor mereka lebih rendah, itu jujur
+        // secara statistik (bukan dipaksa pakai ADX yang belum matang).
+        if (!adxDataSufficient) {
+            reasons.add("ADX di-skip (candle <" + MIN_BARS_FOR_ADX + ", belum matang)");
+        }
+        boolean adxConfirmsBullish = adxDataSufficient && adxVal >= ADX_TREND_THRESHOLD && plusDIVal > minusDIVal && emaBullish;
         if (adxConfirmsBullish) {
             score += 2;
             reasons.add(String.format("ADX %.0f trending searah(+2)", adxVal));
