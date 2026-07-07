@@ -88,6 +88,11 @@ public class ScreenerStrategyService {
     private static final int MIN_BARS_REQUIRED = 30; // cukup buat EMA/RSI/BB, TIDAK cukup buat ADX matang
     private static final int MIN_BARS_FOR_ADX = 60; // ADX butuh ~2x periode buat stabil, di bawah ini di-skip (bukan blok verdict total)
 
+    // Fallback buat coin yang candle-nya kurang buat indikator teknikal
+    // (biasanya coin baru listing) — TEBAKAN AWAL, belum divalidasi.
+    private static final double HYPE_RELATIVE_STRENGTH_THRESHOLD = 5.0;
+    private static final double HYPE_VOLUME_RATIO_THRESHOLD = 3.0;
+
     /**
      * Mutate in-place: isi field verdict/suggestedEntry/Sl/Tp pada tiap
      * CoinCandidate di list. Dipanggil SEBELUM persistTopCandidates(),
@@ -109,8 +114,7 @@ public class ScreenerStrategyService {
         List<Candle> candles = fetchKlines(candidate.getSymbol(), KLINE_INTERVAL_BINANCE, KLINE_LIMIT);
 
         if (candles.size() < MIN_BARS_REQUIRED) {
-            candidate.setVerdict("INSUFFICIENT_DATA");
-            candidate.setVerdictReason("Cuma " + candles.size() + " candle, butuh minimal " + MIN_BARS_REQUIRED);
+            evaluateInsufficientDataFallback(candidate, candles.size());
             return;
         }
 
@@ -198,6 +202,36 @@ public class ScreenerStrategyService {
         candidate.setSuggestedEntry(BigDecimal.valueOf(closeVal));
         candidate.setSuggestedSl(BigDecimal.valueOf(closeVal - (atrVal * SWING_SL_ATR_MULTIPLIER)));
         candidate.setSuggestedTp(BigDecimal.valueOf(closeVal + (atrVal * SWING_TP_ATR_MULTIPLIER)));
+    }
+
+    /**
+     * Dipanggil kalau candle < MIN_BARS_REQUIRED (biasanya coin baru listing).
+     * Indikator teknikal (EMA/RSI/BB/ADX) gak relevan buat kasus ini — coin
+     * baru gerak karena hype/sentimen, bukan pola trend yang matang.
+     *
+     * Fallback: pakai relativeStrengthVsBtc & volumeSpikeRatio yang UDAH ADA
+     * dari CoinScreenerService (dihitung dari ticker 24h, gak butuh candle
+     * historis sama sekali). Kalau momentum+volume kuat, verdict jadi
+     * HYPE_UNCONFIRMED — bukan KUAT, sengaja gak trigger Telegram, karena ini
+     * "gak bisa dikonfirmasi teknikal", bukan "udah divalidasi teknikal".
+     */
+    private void evaluateInsufficientDataFallback(CoinCandidate candidate, int candleCount) {
+        BigDecimal relStrength = candidate.getRelativeStrengthVsBtc();
+        BigDecimal volRatio = candidate.getVolumeSpikeRatio();
+
+        boolean strongMomentum = relStrength != null && relStrength.doubleValue() > HYPE_RELATIVE_STRENGTH_THRESHOLD;
+        boolean strongVolume = volRatio != null && volRatio.doubleValue() > HYPE_VOLUME_RATIO_THRESHOLD;
+
+        if (strongMomentum && strongVolume) {
+            candidate.setVerdict("HYPE_UNCONFIRMED");
+            candidate.setVerdictReason(String.format(
+                    "Cuma %d candle (belum cukup buat teknikal), tapi relative strength %.1f & volume ratio %.1f kuat — worth cek manual (berita/sosmed)",
+                    candleCount, relStrength.doubleValue(), volRatio.doubleValue()));
+        } else {
+            candidate.setVerdict("INSUFFICIENT_DATA");
+            candidate.setVerdictReason("Cuma " + candleCount + " candle, butuh minimal " + MIN_BARS_REQUIRED
+                    + ", dan momentum/volume juga gak cukup kuat buat fallback hype");
+        }
     }
 
     @SuppressWarnings("unchecked")
