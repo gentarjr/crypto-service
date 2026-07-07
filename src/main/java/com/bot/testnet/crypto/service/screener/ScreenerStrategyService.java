@@ -66,13 +66,15 @@ public class ScreenerStrategyService {
     @Value("${trading.indicators.atr-period:14}")
     private int atrPeriod;
 
-    @Value("${trading.risk.sl-atr-multiplier:1.5}")
-    private double slAtrMultiplier;
+    // SENGAJA TIDAK reuse trading.risk.sl-atr-multiplier/tp-atr-multiplier —
+    // itu ditujukan buat scalping m15 bot live, bukan buat verdict swing
+    // screener ini. Angka di bawah tebakan awal, BELUM divalidasi backtest.
+    private static final double SWING_SL_ATR_MULTIPLIER = 2.5;
+    private static final double SWING_TP_ATR_MULTIPLIER = 4.0;
 
-    @Value("${trading.risk.tp-atr-multiplier:2.0}")
-    private double tpAtrMultiplier;
-
-    private static final int KLINE_LIMIT = 200; // cukup untuk warmup EMA21/BB20/ATR14 dengan aman
+    private static final String KLINE_INTERVAL_BINANCE = "4h"; // format param Binance API
+    private static final String KLINE_INTERVAL_INTERNAL = "h4"; // format token BarSeriesConverter
+    private static final int KLINE_LIMIT = 200; // 200 x 4h candle = ~33 hari histori, cukup warmup EMA21/BB20/ATR14
     private static final int MIN_BARS_REQUIRED = 60;
 
     /**
@@ -93,7 +95,7 @@ public class ScreenerStrategyService {
     }
 
     private void evaluateOne(CoinCandidate candidate) {
-        List<Candle> candles = fetchKlines(candidate.getSymbol(), "15m", KLINE_LIMIT);
+        List<Candle> candles = fetchKlines(candidate.getSymbol(), KLINE_INTERVAL_BINANCE, KLINE_LIMIT);
 
         if (candles.size() < MIN_BARS_REQUIRED) {
             candidate.setVerdict("INSUFFICIENT_DATA");
@@ -143,8 +145,8 @@ public class ScreenerStrategyService {
         candidate.setVerdict(verdict);
         candidate.setVerdictReason(reason);
         candidate.setSuggestedEntry(BigDecimal.valueOf(closeVal));
-        candidate.setSuggestedSl(BigDecimal.valueOf(closeVal - (atrVal * slAtrMultiplier)));
-        candidate.setSuggestedTp(BigDecimal.valueOf(closeVal + (atrVal * tpAtrMultiplier)));
+        candidate.setSuggestedSl(BigDecimal.valueOf(closeVal - (atrVal * SWING_SL_ATR_MULTIPLIER)));
+        candidate.setSuggestedTp(BigDecimal.valueOf(closeVal + (atrVal * SWING_TP_ATR_MULTIPLIER)));
     }
 
     @SuppressWarnings("unchecked")
@@ -166,7 +168,7 @@ public class ScreenerStrategyService {
                     .close(new BigDecimal(k.get(4).toString()))
                     .volume(new BigDecimal(k.get(5).toString()))
                     .closeTime(Instant.ofEpochMilli(((Number) k.get(6)).longValue()))
-                    .interval("m15") // konvensi internal BarSeriesConverter, bukan format Binance "15m"
+                    .interval(KLINE_INTERVAL_INTERNAL) // konvensi internal BarSeriesConverter ("h4"), bukan format Binance ("4h")
                     .build());
         }
         return candles;

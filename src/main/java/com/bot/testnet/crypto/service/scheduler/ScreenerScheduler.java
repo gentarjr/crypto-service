@@ -14,7 +14,7 @@ public class ScreenerScheduler {
     // scheduler = "screenerTaskScheduler" WAJIB eksplisit — kalau tidak,
     // Spring pakai TaskScheduler bean pertama yang ketemu (bisa saja bean
     // taskScheduler() yang sudah dipakai 11 scheduler trading existing).
-    @Scheduled(fixedRate = 60 * 60 * 1000, scheduler = "screenerTaskScheduler")
+    @Scheduled(fixedRate = 15 * 60 * 1000, scheduler = "screenerTaskScheduler")
     public void runScreening() {
         coinScreenerService.runScreeningCycle();
     }
