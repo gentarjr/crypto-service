@@ -3,7 +3,6 @@ package com.bot.testnet.crypto.service.screener;
 import com.bot.testnet.crypto.model.dto.BinanceTicker24hDto;
 import com.bot.testnet.crypto.model.entity.CoinCandidate;
 import com.bot.testnet.crypto.repository.CoinCandidateRepository;
-import com.bot.testnet.crypto.service.TelegramNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -28,13 +27,17 @@ public class CoinScreenerService {
 
     @Qualifier("binancePublicRestClient")
     private final RestClient binancePublicRestClient;
-
-    private final TelegramNotificationService telegramNotificationService;
     private final ScreenerValidationService screenerValidationService;
     private final ScreenerStrategyService screenerStrategyService;
 
-    private static final Set<String> EXCLUDED_QUOTE_NOISE = Set.of(
-            "USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "DAIUSDT", // stablecoin vs stablecoin, tidak relevan
+    // Exclude berdasarkan BASE ASSET (bukan symbol pair penuh) — lebih robust
+    // daripada daftar pair satu-satu, karena stablecoin baru (RLUSD, USDD, dst)
+    // otomatis ketutup tanpa perlu update manual tiap ada listing baru.
+    private static final Set<String> STABLECOIN_BASE_ASSETS = Set.of(
+            "USDC", "FDUSD", "TUSD", "BUSD", "DAI", "RLUSD", "USDD", "PYUSD", "USDE", "USD1"
+    );
+
+    private static final Set<String> EXCLUDED_SYMBOLS = Set.of(
             "BTCUSDT", // benchmark relative-strength, skornya selalu 0 by construction — bukan kandidat
             "BNBUSDT", "ETHUSDT" // sudah jadi pair live trading kamu, percuma di-screen ulang
     );
@@ -105,7 +108,10 @@ public class CoinScreenerService {
 
     private boolean passesLiquidityFilter(BinanceTicker24hDto t) {
         if (t.getSymbol() == null || !t.getSymbol().endsWith("USDT")) return false;
-        if (EXCLUDED_QUOTE_NOISE.contains(t.getSymbol())) return false;
+        if (EXCLUDED_SYMBOLS.contains(t.getSymbol())) return false;
+
+        String baseAsset = t.getSymbol().substring(0, t.getSymbol().length() - 4); // strip "USDT"
+        if (STABLECOIN_BASE_ASSETS.contains(baseAsset)) return false;
 
         BigDecimal quoteVolume = safeParse(t.getQuoteVolume());
         return quoteVolume != null && quoteVolume.compareTo(MIN_QUOTE_VOLUME_24H) >= 0;
@@ -167,11 +173,6 @@ public class CoinScreenerService {
                         c.getLastPrice().toPlainString()
                 ));
             }
-
-            telegramNotificationService.sendMessage(
-                    "🔍 Top 5 Coin Screener",
-                    message.toString()
-            );
         } catch (Exception e) {
             // Jangan biarkan kegagalan notif Telegram membatalkan hasil screening yang sudah tersimpan.
             log.error("Gagal kirim notif Telegram untuk screener, data tetap tersimpan di DB", e);
