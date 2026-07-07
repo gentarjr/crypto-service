@@ -3,6 +3,7 @@ package com.bot.testnet.crypto.service.screener;
 import com.bot.testnet.crypto.model.dto.BinanceTicker24hDto;
 import com.bot.testnet.crypto.model.entity.CoinCandidate;
 import com.bot.testnet.crypto.repository.CoinCandidateRepository;
+import com.bot.testnet.crypto.service.TelegramNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -29,6 +30,7 @@ public class CoinScreenerService {
     private final RestClient binancePublicRestClient;
     private final ScreenerValidationService screenerValidationService;
     private final ScreenerStrategyService screenerStrategyService;
+    private final TelegramNotificationService telegramNotificationService;
 
     // Exclude berdasarkan BASE ASSET (bukan symbol pair penuh) — lebih robust
     // daripada daftar pair satu-satu, karena stablecoin baru (RLUSD, USDD, dst)
@@ -79,7 +81,14 @@ public class CoinScreenerService {
             persistTopCandidates(top10);
             log.info("Screener: {} kandidat baru disimpan", top10.size());
 
-            screenerValidationService.logNewPicks(top3);
+            List<CoinCandidate> newlyLogged = screenerValidationService.logNewPicks(top3);
+
+            List<CoinCandidate> newlyKuat = newlyLogged.stream()
+                    .filter(c -> "KUAT".equals(c.getVerdict()))
+                    .collect(Collectors.toList());
+            if (!newlyKuat.isEmpty()) {
+                sendTelegramAlert(newlyKuat);
+            }
 
         } catch (Exception e) {
             // Sengaja ditelan di level ini (bukan dibiarkan propagate ke scheduler)
@@ -149,6 +158,30 @@ public class CoinScreenerService {
                 .quoteVolume24h(quoteVolume)
                 .generatedAt(Instant.now())
                 .build();
+    }
+
+    /**
+     * Cuma dipanggil buat pick BARU (bukan dedup-skip) dengan verdict KUAT.
+     * Gak nyampah tiap cycle buat coin yang sama terus-terusan muncul.
+     */
+    private void sendTelegramAlert(List<CoinCandidate> newlyKuat) {
+        try {
+            StringBuilder message = new StringBuilder();
+            for (CoinCandidate c : newlyKuat) {
+                message.append(String.format(
+                        "🟢 <b>%s</b>  |  Skor %s  |  Entry $%s  |  SL $%s  |  TP $%s\n",
+                        c.getSymbol(),
+                        c.getScore().setScale(1, RoundingMode.HALF_UP),
+                        c.getSuggestedEntry() != null ? c.getSuggestedEntry().toPlainString() : "-",
+                        c.getSuggestedSl() != null ? c.getSuggestedSl().toPlainString() : "-",
+                        c.getSuggestedTp() != null ? c.getSuggestedTp().toPlainString() : "-"
+                ));
+            }
+            telegramNotificationService.sendMessage("🔍 Coin Screener — Potensial KUAT", message.toString());
+        } catch (Exception e) {
+            // Gagal kirim Telegram TIDAK BOLEH gagalkan cycle screening — data tetap tersimpan.
+            log.error("Gagal kirim notif Telegram untuk pick KUAT", e);
+        }
     }
 
     private BigDecimal safeParse(String value) {

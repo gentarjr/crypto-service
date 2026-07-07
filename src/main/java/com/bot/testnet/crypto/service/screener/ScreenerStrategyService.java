@@ -14,6 +14,9 @@ import org.ta4j.core.BarSeries;
 import org.ta4j.core.indicators.ATRIndicator;
 import org.ta4j.core.indicators.EMAIndicator;
 import org.ta4j.core.indicators.RSIIndicator;
+import org.ta4j.core.indicators.adx.ADXIndicator;
+import org.ta4j.core.indicators.adx.MinusDIIndicator;
+import org.ta4j.core.indicators.adx.PlusDIIndicator;
 import org.ta4j.core.indicators.bollinger.BollingerBandsLowerIndicator;
 import org.ta4j.core.indicators.bollinger.BollingerBandsMiddleIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
@@ -66,6 +69,13 @@ public class ScreenerStrategyService {
     @Value("${trading.indicators.atr-period:14}")
     private int atrPeriod;
 
+    @Value("${trading.indicators.adx-period:14}")
+    private int adxPeriod;
+
+    private static final double ADX_TREND_THRESHOLD = 25.0; // ADX di bawah ini dianggap choppy/sideways, bukan trending
+    private static final int TIER_KUAT_THRESHOLD = 5;   // skor >=5 dari maks 7
+    private static final int TIER_SEDANG_THRESHOLD = 2; // skor 2-4 = Sedang, <2 = Lemah
+
     // SENGAJA TIDAK reuse trading.risk.sl-atr-multiplier/tp-atr-multiplier —
     // itu ditujukan buat scalping m15 bot live, bukan buat verdict swing
     // screener ini. Angka di bawah tebakan awal, BELUM divalidasi backtest.
@@ -116,31 +126,59 @@ public class ScreenerStrategyService {
         StandardDeviationIndicator stdDev = new StandardDeviationIndicator(closePrice, bbPeriod);
         BollingerBandsLowerIndicator bbLower = new BollingerBandsLowerIndicator(bbMiddle, stdDev, series.numOf(bbStdDev));
 
+        ADXIndicator adx = new ADXIndicator(series, adxPeriod, adxPeriod);
+        PlusDIIndicator plusDI = new PlusDIIndicator(series, adxPeriod);
+        MinusDIIndicator minusDI = new MinusDIIndicator(series, adxPeriod);
+
         double closeVal = closePrice.getValue(lastIndex).doubleValue();
         double emaFastVal = emaFast.getValue(lastIndex).doubleValue();
         double emaSlowVal = emaSlow.getValue(lastIndex).doubleValue();
         double rsiVal = rsi.getValue(lastIndex).doubleValue();
         double atrVal = atr.getValue(lastIndex).doubleValue();
         double bbLowerVal = bbLower.getValue(lastIndex).doubleValue();
+        double adxVal = adx.getValue(lastIndex).doubleValue();
+        double plusDIVal = plusDI.getValue(lastIndex).doubleValue();
+        double minusDIVal = minusDI.getValue(lastIndex).doubleValue();
+
+        // Sistem skor poin (bukan AND-gate) — 1 kriteria lemah gak langsung
+        // diskualifikasi total kalau kriteria lain kuat. Bobot di bawah TEBAKAN
+        // AWAL, belum divalidasi backtest — pantau lewat validation-summary.
+        int score = 0;
+        List<String> reasons = new ArrayList<>();
+
+        boolean emaBullish = emaFastVal > emaSlowVal && closeVal > emaSlowVal;
+        if (emaBullish) {
+            score += 2;
+            reasons.add(String.format("EMA%d>EMA%d(+2)", emaFastPeriod, emaSlowPeriod));
+        }
+
+        boolean rsiOk = rsiVal < rsiOverbought;
+        if (rsiOk) {
+            score += 1;
+            reasons.add(String.format("RSI %.0f belum overbought(+1)", rsiVal));
+        }
+
+        boolean bbBounce = rsiVal < rsiOversold && closeVal <= bbLowerVal;
+        if (bbBounce) {
+            score += 2;
+            reasons.add("BB oversold-bounce(+2)");
+        }
+
+        // ADX cuma dikasih poin kalau TRENDING (>=25) DAN arahnya (+DI vs -DI)
+        // konfirmasi arah EMA bullish di atas — bukan berdiri sendiri, biar
+        // gak kasih poin ke "trending kuat tapi arahnya turun".
+        boolean adxConfirmsBullish = adxVal >= ADX_TREND_THRESHOLD && plusDIVal > minusDIVal && emaBullish;
+        if (adxConfirmsBullish) {
+            score += 2;
+            reasons.add(String.format("ADX %.0f trending searah(+2)", adxVal));
+        }
 
         String verdict;
-        String reason;
+        if (score >= TIER_KUAT_THRESHOLD) verdict = "KUAT";
+        else if (score >= TIER_SEDANG_THRESHOLD) verdict = "SEDANG";
+        else verdict = "LEMAH";
 
-        // CATATAN: ini filter generic, BUKAN replika logic EmaSignalService/BbSignalService
-        // yang sudah di-tuning dengan confluence categories, ADX, volume-surge, pullback.
-        // Ini starting point kasar, bukan sinyal setara strategi live kamu.
-        if (emaFastVal > emaSlowVal && closeVal > emaSlowVal && rsiVal < rsiOverbought) {
-            verdict = "EMA_BULLISH";
-            reason = String.format("EMA%d(%.4f) > EMA%d(%.4f), RSI %.1f (belum overbought)",
-                    emaFastPeriod, emaFastVal, emaSlowPeriod, emaSlowVal, rsiVal);
-        } else if (rsiVal < rsiOversold && closeVal <= bbLowerVal) {
-            verdict = "BB_OVERSOLD_BOUNCE";
-            reason = String.format("RSI %.1f (oversold), harga %.6f di/bawah BB lower %.6f",
-                    rsiVal, closeVal, bbLowerVal);
-        } else {
-            verdict = "NO_CLEAR_SIGNAL";
-            reason = String.format("EMA%d/EMA%d belum cross, RSI %.1f netral", emaFastPeriod, emaSlowPeriod, rsiVal);
-        }
+        String reason = "Skor " + score + ": " + (reasons.isEmpty() ? "tidak ada kriteria terpenuhi" : String.join(", ", reasons));
 
         candidate.setVerdict(verdict);
         candidate.setVerdictReason(reason);
