@@ -35,9 +35,10 @@ public class ScreenerValidationService {
 
     /**
      * Dipanggil setelah screening cycle. Skip symbol yang sudah punya log
-     * dalam DEDUP_WINDOW. Return HANYA candidate yang beneran baru di-log
-     * (bukan yang di-skip karena dedup) — dipakai caller buat gating Telegram,
-     * supaya notif gak nyampah tiap cycle buat coin yang sama.
+     * dalam DEDUP_WINDOW **dengan verdict yang SAMA**. Kalau verdict berubah
+     * (misal SEDANG -> KUAT), tetap di-log ulang — itu kejadian baru yang perlu
+     * ke-notice, bukan noise. Return HANYA candidate yang beneran baru di-log,
+     * dipakai caller buat gating Telegram.
      */
     @Transactional
     public List<CoinCandidate> logNewPicks(List<CoinCandidate> topCandidates) {
@@ -46,9 +47,9 @@ public class ScreenerValidationService {
         List<CoinCandidate> newlyLogged = new ArrayList<>();
 
         for (CoinCandidate c : topCandidates) {
-            boolean alreadyLogged = !screenerPickLogRepository
-                    .findRecentBySymbol(c.getSymbol(), dedupCutoff).isEmpty();
-            if (alreadyLogged) continue;
+            boolean alreadyLoggedSameVerdict = !screenerPickLogRepository
+                    .findRecentBySymbolAndVerdict(c.getSymbol(), c.getVerdict(), dedupCutoff).isEmpty();
+            if (alreadyLoggedSameVerdict) continue;
 
             ScreenerPickLog logEntry = ScreenerPickLog.builder()
                     .symbol(c.getSymbol())

@@ -10,8 +10,8 @@ import java.util.List;
 
 public interface ScreenerPickLogRepository extends JpaRepository<ScreenerPickLog, Long> {
 
-    @Query("SELECT s FROM ScreenerPickLog s WHERE s.symbol = :symbol AND s.pickedAt > :since ORDER BY s.pickedAt DESC")
-    List<ScreenerPickLog> findRecentBySymbol(@Param("symbol") String symbol, @Param("since") Instant since);
+    @Query("SELECT s FROM ScreenerPickLog s WHERE s.symbol = :symbol AND s.verdictAtPick = :verdict AND s.pickedAt > :since ORDER BY s.pickedAt DESC")
+    List<ScreenerPickLog> findRecentBySymbolAndVerdict(@Param("symbol") String symbol, @Param("verdict") String verdict, @Param("since") Instant since);
 
     List<ScreenerPickLog> findByChecked24hFalseAndPickedAtBefore(Instant cutoff);
 
