@@ -55,6 +55,9 @@ public class EmaSignalServiceEth implements SignalService {
     @Value("${trading.risk-eth.tp-atr-multiplier:2.0}")
     private double tpAtrMultiplier;
 
+    @Value("${trading.risk-eth.min-rr-ratio:0.8}")
+    private double minRrRatio;
+
     @Value("${trading.risk-eth.modal:300}")
     private double modal;
 
@@ -619,7 +622,7 @@ public class EmaSignalServiceEth implements SignalService {
                 ? netReward.divide(netRisk, 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        BigDecimal minRrRatio = new BigDecimal("1.2");
+        BigDecimal minRrRatio = new BigDecimal(this.minRrRatio);
         if (effectiveRR.compareTo(minRrRatio) < 0) {
             log.warn("⚠️ [EMA] Effective R:R (after fee) too low: {} (min {}) — skip",
                     effectiveRR, minRrRatio);

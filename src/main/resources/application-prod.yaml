@@ -68,6 +68,7 @@ trading:
     bb-cooldown-minutes: 30
     sl-atr-multiplier: 1.5
     tp-atr-multiplier: 2.0
+    min-rr-ratio: 0.8
     trailing-atr-multiplier: 1.5
     max-position-percent: 75.0
     max-slippage-percent: 0.8
@@ -144,6 +145,7 @@ trading:
       percent-b-min: -0.1
       sl-atr-multiplier: 0.8
       tp-atr-multiplier: 1.5
+      min-rr-ratio: 0.8
       min-confluence-categories: 3
 
   risk:
@@ -152,6 +154,7 @@ trading:
     modal: 300                  # fallback kalau tidak bisa fetch balance
     sl-atr-multiplier: 1.5
     tp-atr-multiplier: 2.0
+    min-rr-ratio: 0.8
     max-position-percent: 75.0  # max 90% balance per posisi
     trailing-atr-multiplier: 1.5
     risk-per-trade-percent: 1.0   # dari 1.0

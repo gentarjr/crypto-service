@@ -61,6 +61,9 @@ public class BbSignalService implements SignalService {
     @Value("${trading.strategy.bb.tp-atr-multiplier:1.0}")
     private double tpAtrMultiplier;
 
+    @Value("${trading.strategy.bb.min-rr-ratio:0.8}")
+    private double minRrRatio;
+
     @Value("${trading.strategy.bb.min-confluence-categories:3}")
     private int minConfluenceCategories;
 
@@ -556,7 +559,7 @@ public class BbSignalService implements SignalService {
                 ? netReward.divide(netRisk, 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        BigDecimal minRrRatio = new BigDecimal("1.2");
+        BigDecimal minRrRatio = new BigDecimal(this.minRrRatio);
         if (effectiveRR.compareTo(minRrRatio) < 0) {
             filters.add(SignalFilter.fail("RISK_REWARD",
                     String.format("Effective R:R %.2f < %.1f after fee ($%.3f)",
