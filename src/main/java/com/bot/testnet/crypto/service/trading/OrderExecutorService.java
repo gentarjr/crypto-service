@@ -818,7 +818,9 @@ public class OrderExecutorService {
                                         ? pos.getLastOcoSL()
                                         : pos.getInitialStopLoss())
                                 .abs();
-                        if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
+                        BigDecimal minSlChange = pos.getStopLoss()
+                                .multiply(BigDecimal.valueOf(ocoUpdateMinPct / 100));
+                        if (slChange.compareTo(minSlChange) >= 0) {
                             needOcoUpdate = true;
                             pos.setLastOcoSL(pos.getStopLoss());
                         }
@@ -919,6 +921,7 @@ public class OrderExecutorService {
             if (partialQty.compareTo(new BigDecimal("0.001")) < 0) {
                 log.warn("⚠️ Partial TP qty too small: {} — skip", partialQty);
                 openPosition.setPartialTpExecuted(false); // reset flag
+                if (oldOcoId != null) restoreOcoAfterPartial(openPosition); // OCO sudah dicancel — pasang balik!
                 return;
             }
 

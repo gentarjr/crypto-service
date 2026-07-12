@@ -830,7 +830,9 @@ public class OrderExecutorServiceEth {
                                         ? pos.getLastOcoSL()
                                         : pos.getInitialStopLoss())
                                 .abs();
-                        if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
+                        BigDecimal minSlChange = pos.getStopLoss()
+                                .multiply(BigDecimal.valueOf(ocoUpdateMinPct / 100));
+                        if (slChange.compareTo(minSlChange) >= 0) {
                             needOcoUpdate = true;
                             pos.setLastOcoSL(pos.getStopLoss());
                         }
@@ -926,9 +928,10 @@ public class OrderExecutorServiceEth {
                 log.warn("⚠️ Cannot verify balance for partial TP cap: {}", e.getMessage());
             }
 
-            if (partialQty.compareTo(BigDecimal.valueOf(minQuantityDouble)) < 0) {
+            if (partialQty.compareTo(new BigDecimal("0.001")) < 0) {
                 log.warn("⚠️ Partial TP qty too small: {} — skip", partialQty);
                 openPosition.setPartialTpExecuted(false); // reset flag
+                if (oldOcoId != null) restoreOcoAfterPartial(openPosition); // OCO sudah dicancel — pasang balik!
                 return;
             }
 
