@@ -620,7 +620,7 @@ public class EmaSignalService implements SignalService {
                 ? netReward.divide(netRisk, 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        BigDecimal minRrRatio = new BigDecimal(this.minRrRatio);
+        BigDecimal minRrRatio = BigDecimal.valueOf(this.minRrRatio);
         if (effectiveRR.compareTo(minRrRatio) < 0) {
             log.warn("⚠️ [EMA] Effective R:R (after fee) too low: {} (min {}) — skip",
                     effectiveRR, minRrRatio);

@@ -559,7 +559,7 @@ public class BbSignalService implements SignalService {
                 ? netReward.divide(netRisk, 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        BigDecimal minRrRatio = new BigDecimal(this.minRrRatio);
+        BigDecimal minRrRatio = BigDecimal.valueOf(this.minRrRatio);
         if (effectiveRR.compareTo(minRrRatio) < 0) {
             filters.add(SignalFilter.fail("RISK_REWARD",
                     String.format("Effective R:R %.2f < %.1f after fee ($%.3f)",
