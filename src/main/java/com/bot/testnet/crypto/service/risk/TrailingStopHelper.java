@@ -43,7 +43,7 @@ public class TrailingStopHelper {
 
             if (currentPrice.compareTo(halfRTrigger) >= 0) {
                 BigDecimal breakevenSL = position.getEntryPrice()
-                        .multiply(new BigDecimal("1.00075")); // cover buy fee
+                        .multiply(new BigDecimal("1.0016"));
                 boolean updated = position.ratchetStopLoss(breakevenSL);
                 if (updated) {
                     log.info("🔒 [{}] Breakeven SL at 0.5R → ${}", label, breakevenSL);

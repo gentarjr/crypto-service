@@ -176,6 +176,14 @@ public class BinanceBuyService {
             // Bisa jadi limit order masih pending di Binance
             log.warn("⚠️ Order status UNCERTAIN after {}s — limit order might be pending",
                     maxRetry * 1.5);
+            try {
+                binanceExchange.getTradeService().cancelOrder(
+                        new DefaultCancelAllOrdersByInstrument(pair));
+                log.warn("🗑️ Uncertain state — pending limit order cancelled");
+            } catch (Exception cancelEx) {
+                log.error("❌ Cancel pending order FAILED — CEK BINANCE MANUAL: {}",
+                        cancelEx.getMessage());
+            }
             telegramNotificationService.sendMessage(
                     "⚠️ [LIVE] Order Status Uncertain",
                     String.format(

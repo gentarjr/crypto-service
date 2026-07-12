@@ -76,6 +76,7 @@ trading:
     qty-decimal-places: 4
     min-quantity: 0.003
     max-drawdown-percent: 20.0
+    oco-update-min-pct: 0.15
   websocket-eth:
     base-url: wss://stream.binance.com/ws
     reconnect-delay-seconds: 5
@@ -166,6 +167,7 @@ trading:
     partial-tp-enabled: false
     partial-tp-ratio: 0.5
     max-drawdown-percent: 20.0
+    oco-update-min-pct: 0.15
 
   sentiment:
     enabled: true

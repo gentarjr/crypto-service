@@ -108,6 +108,9 @@ public class OrderExecutorService {
     @Value("${trading.risk.max-position-percent:75.0}")
     private double maxPositionPercent;
 
+    @Value("${trading.risk.oco-update-min-pct:0.15}")
+    private double ocoUpdateMinPct;
+
     // ═══════════════════════════════════════════════════
     // State
     // ═══════════════════════════════════════════════════
@@ -745,7 +748,9 @@ public class OrderExecutorService {
                                 ? pos.getLastOcoSL()
                                 : pos.getInitialStopLoss())
                         .abs();
-                if (slChange.compareTo(new BigDecimal("0.50")) >= 0) {
+                BigDecimal minSlChange = pos.getStopLoss()
+                        .multiply(BigDecimal.valueOf(ocoUpdateMinPct / 100));
+                if (slChange.compareTo(minSlChange) >= 0) {
                     updateOcoAfterTrailing(pos);
                     pos.setLastOcoSL(pos.getStopLoss());
                 }
@@ -880,6 +885,24 @@ public class OrderExecutorService {
                     .multiply(BigDecimal.valueOf(partialTpRatio))
                     .setScale(3, RoundingMode.DOWN);
 
+            String oldOcoId = openPosition.getOcoOrderListId();
+            if (oldOcoId != null) {
+                try {
+                    binanceOcoService.cancelOcoOrder(baseCurrency + quoteCurrency, oldOcoId);
+                    openPosition.setOcoOrderListId(null);
+                    Thread.sleep(500); // tunggu balance unlock
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    openPosition.setPartialTpExecuted(false);
+                    return;
+                } catch (Exception e) {
+                    log.error("❌ Cannot cancel OCO for partial TP — abort: {}", e.getMessage());
+                    openPosition.setPartialTpExecuted(false);
+                    return; // OCO lama masih hidup = posisi tetap terproteksi
+                }
+            }
+
+
             try {
                 BigDecimal actualBal = balanceService.getAvailableBnb();
                 if (actualBal != null && actualBal.compareTo(partialQty) < 0) {
@@ -933,6 +956,8 @@ public class OrderExecutorService {
                             .setScale(2, RoundingMode.HALF_UP);
                     openPosition.ratchetStopLoss(newSL);
 
+                    restoreOcoAfterPartial(openPosition);
+
                     log.info("✅ Partial TP: sold {} BNB @ ${}, net profit=${}, " +
                                     "remaining={} BNB, SL→${}",
                             partialQty, currentPrice,
@@ -954,10 +979,12 @@ public class OrderExecutorService {
                     // Sell gagal → reset flag supaya bisa retry
                     log.error("❌ Partial TP sell failed: {}", sellResult.getStatus());
                     openPosition.setPartialTpExecuted(false);
+                    if (oldOcoId != null) restoreOcoAfterPartial(openPosition);
                 }
             } catch (Exception e) {
                 log.error("❌ Partial TP error: {}", e.getMessage());
                 openPosition.setPartialTpExecuted(false); // reset flag
+                if (oldOcoId != null) restoreOcoAfterPartial(openPosition);
             }
         } finally {
             positionLock.unlock();
@@ -1455,6 +1482,14 @@ public class OrderExecutorService {
     private void updateOcoAfterTrailing(LivePosition position) {
         String oldOcoId = position.getOcoOrderListId();
         try {
+            // ✅ FIX: validasi SEBELUM bunuh OCO lama — jangan naked kalau invalid
+            BigDecimal preTP = position.getTakeProfit().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal preSL = position.getStopLoss().setScale(2, RoundingMode.DOWN);
+            if (preTP.compareTo(preSL) <= 0) {
+                log.warn("⚠️ OCO update skip (pre-cancel): TP ${} <= SL ${} — OCO lama TETAP hidup",
+                        preTP, preSL);
+                return;
+            }
 
             binanceOcoService.cancelOcoOrder(
                     baseCurrency + quoteCurrency, oldOcoId);
@@ -1525,5 +1560,36 @@ public class OrderExecutorService {
             log.warn("Cannot fetch BNB for OCO, using position qty: {}", e.getMessage());
         }
         return fallback.setScale(3, RoundingMode.DOWN);
+    }
+
+    private void restoreOcoAfterPartial(LivePosition pos) {
+        if (pos == null || pos.getTakeProfit() == null || pos.getStopLoss() == null) return;
+        try {
+            BigDecimal ocoTP = pos.getTakeProfit().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal ocoSL = pos.getStopLoss().setScale(2, RoundingMode.DOWN);
+            if (ocoTP.compareTo(ocoSL) <= 0) {
+                log.warn("⚠️ Skip OCO restore: TP {} <= SL {}", ocoTP, ocoSL);
+                return;
+            }
+            OcoOrderResponse oco = binanceOcoService.placeOcoOrder(
+                    OcoOrderRequest.builder()
+                            .base(baseCurrency).quote(quoteCurrency)
+                            .quantity(getActualBnbForOco(pos.getQuantity()))
+                            .takeProfitPrice(ocoTP)
+                            .stopLossPrice(ocoSL)
+                            .build());
+            if ("SUCCESS".equals(oco.getStatus())) {
+                pos.setOcoOrderListId(oco.getOrderListId());
+                pos.setLastOcoSL(pos.getStopLoss());
+                log.info("✅ OCO restored after partial TP: {}", oco.getOrderListId());
+            } else {
+                log.warn("⚠️ OCO restore failed: {}", oco.getErrorMessage());
+                sendTg("🚨 [LIVE] Posisi tanpa OCO pasca partial TP",
+                        "Restore OCO gagal. Bot tetap monitor SL/TP lokal, tapi cek Binance!\n⏰ "
+                                + formatTime() + " WIB");
+            }
+        } catch (Exception e) {
+            log.error("❌ OCO restore error: {}", e.getMessage());
+        }
     }
 }
