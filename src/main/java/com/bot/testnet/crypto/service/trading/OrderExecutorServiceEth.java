@@ -928,7 +928,7 @@ public class OrderExecutorServiceEth {
                 log.warn("⚠️ Cannot verify balance for partial TP cap: {}", e.getMessage());
             }
 
-            if (partialQty.compareTo(new BigDecimal("0.001")) < 0) {
+            if (partialQty.compareTo(BigDecimal.valueOf(minQuantityDouble)) < 0) {
                 log.warn("⚠️ Partial TP qty too small: {} — skip", partialQty);
                 openPosition.setPartialTpExecuted(false); // reset flag
                 if (oldOcoId != null) restoreOcoAfterPartial(openPosition); // OCO sudah dicancel — pasang balik!
