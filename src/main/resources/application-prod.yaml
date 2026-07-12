@@ -231,12 +231,12 @@ logging:
     org.hibernate: WARN
     org.java_websocket: WARN
     com.bot.testnet.crypto.service.indicator: WARN
-    com.bot.testnet.crypto.service.exchange.EmaSignalService: INFO
-    com.bot.testnet.crypto.service.exchange.BbSignalService: INFO
-    com.bot.testnet.crypto.service.exchange.EmaSignalServiceEth: INFO
-    com.bot.testnet.crypto.service.exchange.BbSignalServiceEth: INFO
-    com.bot.testnet.crypto.service.exchange.AdaptiveSignalService: INFO
-    com.bot.testnet.crypto.service.exchange.AdaptiveSignalServiceEth: INFO
+    com.bot.testnet.crypto.service.exchange.EmaSignalService: WARN
+    com.bot.testnet.crypto.service.exchange.BbSignalService: WARN
+    com.bot.testnet.crypto.service.exchange.EmaSignalServiceEth: WARN
+    com.bot.testnet.crypto.service.exchange.BbSignalServiceEth: WARN
+    com.bot.testnet.crypto.service.exchange.AdaptiveSignalService: WARN
+    com.bot.testnet.crypto.service.exchange.AdaptiveSignalServiceEth: WARN
   file:
     name: /opt/cryptobot/logs/crypto-bot.log  # ✅ path di VPS
   logback:
